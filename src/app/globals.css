@@ -1,26 +1,406 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* 深みのあるプレミアムなダークカラーパレット */
+  --bg-gradient: linear-gradient(135deg, #0f172a 0%, #020617 100%);
+  --card-bg: rgba(30, 41, 59, 0.4);
+  --card-border: rgba(255, 255, 255, 0.08);
+
+  --primary: #10b981;
+  /* エメラルドグリーン */
+  --primary-hover: #059669;
+  --primary-glow: rgba(16, 185, 129, 0.25);
+
+  --accent: #6366f1;
+  /* インディゴ */
+  --accent-hover: #4f46e5;
+  --accent-glow: rgba(99, 102, 241, 0.25);
+
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-error: #f87171;
+  --bg-error: rgba(248, 113, 113, 0.1);
+  --border-error: rgba(248, 113, 113, 0.2);
+
+  --border-radius-lg: 24px;
+  --border-radius-md: 16px;
+
+  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  --shadow-glow: 0 0 40px rgba(16, 185, 129, 0.1);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-family);
+  background: var(--bg-gradient);
+  color: var(--text-main);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+/* ガラスモルフィズム コンテナ */
+.app-container {
+  width: 90%;
+  max-width: 800px;
+  min-height: 600px;
+  background: var(--card-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--card-border);
+  border-radius: var(--border-radius-lg);
+  padding: 40px;
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.title {
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  background: linear-gradient(to right, #ffffff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 1rem;
+  color: var(--text-muted);
+}
+
+/* 各画面セクション */
+.section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-grow: 1;
+  justify-content: center;
+  width: 100%;
+}
+
+/* インプットグループ */
+.form-group {
+  width: 100%;
+  max-width: 480px;
+  margin-bottom: 20px;
+}
+
+.label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.input-text,
+.select-box {
+  width: 100%;
+  padding: 16px 20px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--card-border);
+  border-radius: var(--border-radius-md);
+  color: var(--text-main);
+  font-size: 1.1rem;
+  font-family: var(--font-family);
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.input-text:focus,
+.select-box:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+  background: rgba(15, 23, 42, 0.8);
+}
+
+/* プルダウンのスタイリング補正 */
+.select-box option {
+  background: #0f172a;
+  color: var(--text-main);
+}
+
+/* ボタン */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 32px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-radius: var(--border-radius-md);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: var(--font-family);
+  text-decoration: none;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #020617;
+  box-shadow: 0 4px 14px 0 var(--primary-glow);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+  transform: translateY(-2px);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  border: 1px solid var(--card-border);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);
+}
+
+.btn-group {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  max-width: 480px;
+  margin-top: 20px;
+}
+
+/* カメラ領域 */
+.camera-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 4/3;
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  background: #000;
+  box-shadow: var(--shadow-lg);
+  margin-bottom: 24px;
+}
+
+.camera-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  /* 鏡面表示 */
+}
+
+/* スキャンのアニメーションガイド線 */
+.scan-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 2px solid rgba(16, 185, 129, 0.3);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.scan-laser {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(to bottom, rgba(16, 185, 129, 0), rgba(16, 185, 129, 0.8), rgba(16, 185, 129, 0));
+  animation: scan 2s linear infinite;
+  box-shadow: 0 0 15px var(--primary);
+}
+
+@keyframes scan {
+  0% {
+    top: 0%;
+  }
+
+  50% {
+    top: 100%;
+  }
+
+  100% {
+    top: 0%;
+  }
+}
+
+.scan-target-box {
+  position: absolute;
+  top: 25%;
+  left: 10%;
+  width: 80%;
+  height: 50%;
+  border: 2px dashed var(--primary);
+  border-radius: 8px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+}
+
+/* ステータスバッジ（オンライン/オフライン） */
+.status-badge {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--card-border);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-online .status-dot {
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+}
+
+.status-offline .status-dot {
+  background: var(--text-error);
+  box-shadow: 0 0 8px var(--text-error);
+}
+
+/* タイムアウト・警告表示 */
+.alert-box {
+  width: 100%;
+  max-width: 480px;
+  padding: 16px 20px;
+  background: var(--bg-error);
+  border: 1px solid var(--border-error);
+  border-radius: var(--border-radius-md);
+  color: var(--text-error);
+
+  /* 変更ポイント①：下マージンだけでなく、左右を自動にして「箱自体」を中央に寄せる */
+  margin: 0 auto 20px auto;
+
+  font-size: 0.95rem;
+
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  /* 中身は左基準で綺麗に並べる */
+  gap: 12px;
+}
+
+/* もしテキストが2行以上になったとき、アイコンが上に固定されるようにする保険 */
+.alert-box svg {
+  flex-shrink: 0;
+}
+
+/* テキスト部分の配置調整 */
+.alert-box span {
+  text-align: left;
+  flex-grow: 1;
+}
+
+/* 完了画面のチェックマーク */
+.success-icon-wrapper {
+  margin-bottom: 30px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.success-circle {
+  width: 100px;
+  height: 100px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 0 30px var(--primary-glow);
+  animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.success-text-big {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: #ffffff;
+}
+
+.success-name {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 24px;
+}
+
+@keyframes scaleIn {
+  0% {
+    transform: scale(0);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ページロード等のインジケータ */
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ヘルプテキスト */
+.help-text {
+  font-size: 1.2rem;
+  font-weight: 1000;
+  color: var(--primary);
+  margin-top: 8px;
 }
