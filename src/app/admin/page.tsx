@@ -22,6 +22,7 @@ import {
   deleteStudentCache
 } from './actions';
 import './admin.css';
+import { DEPARTMENTS, normalizeDepartment } from '@/constants/departments';
 
 // 利用ログの型
 interface UsageLog {
@@ -49,14 +50,6 @@ interface UserCache {
   updated_at: string;
 }
 
-const DEPARTMENTS = [
-  'ITスペシャリスト科',
-  '高度情報処理科・ITエンジニア科',
-  '情報システム科', 'ゲームクリエイター科',
-  '総合デザイン科・Web・CGデザイン科',
-  '建築設計科', 'インテリアデザイン科',
-  '建築士専攻科', '国際ITビジネス科', '教職員'
-];
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'logs' | 'cache' | 'stats'>('logs');
 
@@ -180,7 +173,7 @@ export default function AdminDashboard() {
       log.student_id.includes(searchQuery) ||
       log.class_name.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesDept = filterDept === '' || log.department === filterDept;
+    const matchesDept = filterDept === '' || normalizeDepartment(log.department) === filterDept;
 
     let year = '';
     let month = '';
@@ -209,7 +202,7 @@ export default function AdminDashboard() {
       c.student_id.includes(searchQuery) ||
       c.class_name.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesDept = filterDept === '' || c.department === filterDept;
+    const matchesDept = filterDept === '' || normalizeDepartment(c.department) === filterDept;
 
     return matchesSearch && matchesDept;
   });
@@ -232,7 +225,7 @@ export default function AdminDashboard() {
         stayMin !== null ? `${stayMin}分` : '-',
         log.student_id,
         log.name,
-        log.department,
+        normalizeDepartment(log.department),
         log.grade,
         log.class_name
       ];
@@ -460,7 +453,7 @@ export default function AdminDashboard() {
                         <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{log.student_id}</td>
                         <td style={{ fontWeight: 500 }}>{log.name}</td>
                         <td>{log.class_name}</td>
-                        <td>{log.department} ({log.grade})</td>
+                        <td>{normalizeDepartment(log.department)} ({log.grade})</td>
                         <td>
                           <button
                             className="btn-sm btn-danger-sm"

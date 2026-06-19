@@ -12,6 +12,8 @@ import {
   Globe // 言語切り替え用のアイコンを追加
 } from 'lucide-react';
 import { saveOfflineLog, getOfflineLogs, deleteOfflineLog } from '@/utils/db';
+import { DEPARTMENTS } from '@/constants/departments';
+import { cleanStudentId, cleanClassName, cleanName } from '@/utils/cleansing';
 
 // ==========================================
 // 翻訳用の辞書データ（日・英）
@@ -102,19 +104,6 @@ const TRANSLATIONS = {
     detectLabel: 'Detected'
   }
 };
-
-const DEPARTMENTS = [
-  'ITスペシャリスト科',
-  '高度情報処理科・ITエンジニア科',
-  '情報システム科',
-  'ゲームクリエイター科',
-  '総合デザイン科・Web・CGデザイン科',
-  '建築設計科',
-  'インテリアデザイン科',
-  '建築士専攻科',
-  '国際ITビジネス科',
-  '教職員'
-];
 
 const GRADES = ['1年', '2年', '3年', '4年', '教職員'];
 
@@ -334,21 +323,29 @@ export default function GymCheckIn() {
 
   const handleCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentId || !name || !department || !grade || !className) {
+    const cleanId = cleanStudentId(studentId);
+    const cleanN = cleanName(name);
+    const cleanClass = cleanClassName(className);
+
+    if (!cleanId || !cleanN || !department || !grade || !cleanClass) {
       setErrorMessage(t.requiredError); // 翻訳を適用
       return;
     }
+
+    setStudentId(cleanId);
+    setName(cleanN);
+    setClassName(cleanClass);
 
     setLoading(true);
     setErrorMessage('');
     const checkInTime = new Date().toISOString();
 
     const logData = {
-      student_id: studentId,
-      name: name,
+      student_id: cleanId,
+      name: cleanN,
       department: department,
       grade: grade,
-      class_name: className,
+      class_name: cleanClass,
       checked_in_at: checkInTime
     };
 
@@ -574,7 +571,7 @@ export default function GymCheckIn() {
                   className="input-text"
                   placeholder={t.placeholderId}
                   value={studentId}
-                  onChange={(e) => setStudentId(e.target.value.replace(/\D/g, ''))}
+                  onChange={(e) => setStudentId(cleanStudentId(e.target.value))}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && studentId.length >= 4) {
                       lookupCache(studentId);
@@ -673,7 +670,7 @@ export default function GymCheckIn() {
                 type="text"
                 className="input-text"
                 value={studentId}
-                onChange={(e) => setStudentId(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setStudentId(cleanStudentId(e.target.value))}
                 required
               />
             </div>
@@ -686,6 +683,7 @@ export default function GymCheckIn() {
                 placeholder={t.placeholderName}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                onBlur={(e) => setName(cleanName(e.target.value))}
                 required
               />
             </div>
@@ -729,7 +727,7 @@ export default function GymCheckIn() {
                 className="input-text"
                 placeholder={t.placeholderClass}
                 value={className}
-                onChange={(e) => setClassName(e.target.value)}
+                onChange={(e) => setClassName(cleanClassName(e.target.value))}
                 required
               />
             </div>
