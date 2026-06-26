@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -14,10 +14,25 @@ import {
 import { saveOfflineLog, getOfflineLogs, deleteOfflineLog } from '@/utils/db';
 import { DEPARTMENTS } from '@/constants/departments';
 import { cleanStudentId, cleanName } from '@/utils/cleansing';
+import { detectUserType } from '@/utils/detectUserType';
 import type { SupportedLanguage, TranslationMessages } from '@/lib/translations';
 
 
 const GRADES = ['1年', '2年', '3年', '4年', '教職員'];
+const STAFF_LABEL = '教職員';
+
+type Screen = 'welcome' | 'scan' | 'form' | 'checkin-confirm' | 'checkout-confirm' | 'success';
+
+type UsageLogLike = {
+  id: number;
+  student_id: string;
+  name: string;
+  department: string;
+  grade: string;
+  class_name: string;
+  is_staff?: boolean;
+  checked_in_at: string;
+};
 
 export default function GymCheckIn() {
   const [lang, setLang] = useState<SupportedLanguage>(() => {
@@ -64,7 +79,7 @@ export default function GymCheckIn() {
 
   const t = translations ?? (new Proxy({}, { get: () => '' }) as TranslationMessages);
 
-  const [screen, setScreen] = useState<'welcome' | 'scan' | 'user-type' | 'form' | 'checkout-confirm' | 'success'>('welcome');
+  const [screen, setScreen] = useState<Screen>('welcome');
 
   const [studentId, setStudentId] = useState('');
   const [userType, setUserType] = useState<'student' | 'staff' | null>(null);
@@ -73,7 +88,7 @@ export default function GymCheckIn() {
   const [grade, setGrade] = useState('');
   const [className, setClassName] = useState('');
 
-  // ⭐️ 動的学科・クラスマスタ管理用のState
+  //  動的学科・クラスマスタ管理用のState
   const [dynamicDepartments, setDynamicDepartments] = useState<string[]>([]);
   // classes は { grade: number; class_name: string }[] の形式
   const [deptToClassesMap, setDeptToClassesMap] = useState<Record<string, { grade: number; class_name: string }[]>>({});
@@ -86,14 +101,15 @@ export default function GymCheckIn() {
   const [errorMessage, setErrorMessage] = useState('');
   const [scannedName, setScannedName] = useState('');
   const [ocrResult, setOcrResult] = useState('');
-  const [checkoutLog, setCheckoutLog] = useState<any>(null);
+  const [checkoutLog, setCheckoutLog] = useState<UsageLogLike | null>(null);
+  const [checkoutNotice, setCheckoutNotice] = useState('');
   const [successType, setSuccessType] = useState<'checkin' | 'checkout'>('checkin');
-  const [welcomeMode, setWelcomeMode] = useState<'checkin' | 'checkout'>('checkin');
 
   // ホバー状態を管理するためのState
-  const [hoveredBtn, setHoveredBtn] = useState<'in' | 'out' | 'scan' | 'student' | 'staff' | null>(null);
+  const [hoveredBtn, setHoveredBtn] = useState<'scan' | null>(null);
 
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recentInputRef = useRef<{ id: string; at: number } | null>(null);
 
   // ⭐️ DBから学科マスターデータを動的に取得する処理
   const loadDepartmentMaster = useCallback(async () => {
@@ -195,7 +211,7 @@ export default function GymCheckIn() {
   const resetTimeoutTimer = useCallback(() => {
     if (timeoutTimerRef.current) clearTimeout(timeoutTimerRef.current);
 
-    if (screen === 'form' || screen === 'scan') {
+    if (screen === 'form' || screen === 'scan' || screen === 'checkin-confirm') {
       // 手動入力・スキャン画面: 60秒無操作で待受画面に戻る
       timeoutTimerRef.current = setTimeout(() => {
         handleReset();
@@ -227,8 +243,8 @@ export default function GymCheckIn() {
     setErrorMessage('');
     setOcrResult('');
     setCheckoutLog(null);
+    setCheckoutNotice('');
     setSuccessType('checkin');
-    setWelcomeMode('checkin');
     setUserType(null);
     setHoveredBtn(null);
   };
@@ -258,111 +274,145 @@ export default function GymCheckIn() {
     setClassName('');
   };
 
-  const lookupCache = async (id: string) => {
-    if (!id || id.length < 4) return;
+
+  const isSameLocalDate = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  const formatMonthDay = (dateString: string) => {
+    const date = new Date(dateString);
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  };
+  const lookupUserStatus = async (id: string) => {
+    const normalizedId = id.trim().toUpperCase();
+    const detectedType = detectUserType(normalizedId);
+
+    if (detectedType === 'unknown') {
+      setErrorMessage(t.requiredError);
+      return;
+    }
+
+    const now = Date.now();
+    if (recentInputRef.current?.id === normalizedId && now - recentInputRef.current.at < 3000) {
+      setErrorMessage('処理中です');
+      return;
+    }
+    recentInputRef.current = { id: normalizedId, at: now };
+
     setLoading(true);
     setErrorMessage('');
+    setCheckoutNotice('');
+    setStudentId(normalizedId);
+    setUserType(detectedType);
 
     try {
-      const checkoutRes = await fetch(`/api/checkout?student_id=${encodeURIComponent(id)}`);
-      if (checkoutRes.ok) {
-        const checkoutData = await checkoutRes.json();
-        if (checkoutData.found) {
-          setCheckoutLog(checkoutData.log);
-          setName(checkoutData.log.name);
-          setStudentId(id);
-          setLoading(false);
-          setScreen('checkout-confirm');
-          return;
-        }
+      const [checkoutRes, cacheRes] = await Promise.all([
+        fetch(`/api/checkout?student_id=${encodeURIComponent(normalizedId)}`),
+        fetch(`/api/cache?student_id=${encodeURIComponent(normalizedId)}`),
+      ]);
+
+      const checkoutData = checkoutRes.ok ? await checkoutRes.json() : null;
+      if (checkoutData?.found && checkoutData.log) {
+        const log = checkoutData.log as UsageLogLike;
+        setCheckoutLog(log);
+        setName(log.name || '');
+        setDepartment(log.department || '');
+        setGrade(log.grade || '');
+        setClassName(log.class_name || '');
+        setUserType(log.is_staff ? 'staff' : detectedType);
+        await executeCheckOut(log);
+        return;
       }
 
-      const cacheRes = await fetch(`/api/cache?student_id=${encodeURIComponent(id)}`);
-      if (cacheRes.ok) {
-        const result = await cacheRes.json();
-        if (result.found && result.data) {
-          setName(result.data.name || '');
-          setDepartment(result.data.department || '');
-          setGrade(result.data.grade || '');
-          setClassName(result.data.class_name || '');
-          if (result.data.is_staff) {
-            setUserType('staff');
-            setGrade('教職員');
-            setClassName('教職員');
-          } else {
-            setUserType('student');
-          }
-        }
+      const cacheData = cacheRes.ok ? await cacheRes.json() : null;
+      if (cacheData?.found && cacheData.data) {
+        const data = cacheData.data;
+        setName(data.name || '');
+        setDepartment(detectedType === 'staff' ? STAFF_LABEL : data.department || '');
+        setGrade(detectedType === 'staff' ? STAFF_LABEL : data.grade || '');
+        setClassName(detectedType === 'staff' ? STAFF_LABEL : data.class_name || '');
+        setUserType(detectedType);
+        setScreen('checkin-confirm');
+        return;
       }
+
+      setName('');
+      setDepartment(detectedType === 'staff' ? STAFF_LABEL : '');
+      setGrade(detectedType === 'staff' ? STAFF_LABEL : '');
+      setClassName(detectedType === 'staff' ? STAFF_LABEL : '');
       setScreen('form');
-
     } catch (err) {
-      console.error('Lookup failed:', err);
-      setScreen('form');
+      console.error('lookupUserStatus failed:', err);
+      setErrorMessage(t.registerErr);
     } finally {
       setLoading(false);
     }
   };
-
-  const handleModeSelect = (mode: 'checkin' | 'checkout') => {
-    setWelcomeMode(mode);
-    setSuccessType(mode);
-    setScreen('user-type');
-  };
-
-  const handleCheckOut = async () => {
-    if (!checkoutLog) return;
+  const executeCheckOut = async (targetLog: UsageLogLike | null = checkoutLog) => {
+    if (!targetLog) return;
     setLoading(true);
     setErrorMessage('');
+    setCheckoutNotice('');
 
     try {
+      const checkedOutAt = new Date();
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          log_id: checkoutLog.id,
-          checked_out_at: new Date().toISOString(),
+          log_id: targetLog.id,
+          checked_out_at: checkedOutAt.toISOString(),
         }),
       });
 
-      if (res.ok) {
-        setScannedName(name);
-        setSuccessType('checkout');
-        setScreen('success');
-      } else {
+      if (!res.ok) {
         const errData = await res.json();
         throw new Error(errData.error || 'Checkout failed');
       }
-    } catch (err: any) {
+
+      const checkedInAt = new Date(targetLog.checked_in_at);
+      if (!isSameLocalDate(checkedInAt, checkedOutAt)) {
+        setCheckoutNotice(`${formatMonthDay(targetLog.checked_in_at)}からの利用記録をチェックアウトしました`);
+      }
+
+      setScannedName(targetLog.name || name);
+      setSuccessType('checkout');
+      setScreen('success');
+    } catch (err) {
+      console.error('Checkout failed:', err);
       setErrorMessage(t.checkoutErr);
     } finally {
       setLoading(false);
     }
   };
-
-  const handleCheckInOrOut = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCheckInOrOut = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setErrorMessage('');
 
-    if (welcomeMode === 'checkout' && checkoutLog) {
-      handleCheckOut();
+    const normalizedId = studentId.trim().toUpperCase();
+    const detectedType = detectUserType(normalizedId);
+
+    if (detectedType === 'unknown') {
+      setErrorMessage(t.requiredError);
       return;
     }
-
     // 教職員の場合は、学年とクラスを自動補完してバリデーションを通す
+    let finalDepartment = department;
     let finalGrade = grade;
     let finalClassName = className;
-    if (userType === 'staff') {
+    if (detectedType === 'staff') {
+      finalDepartment = '教職員';
       finalGrade = '教職員';
       finalClassName = '教職員';
     }
 
-    if (!studentId.trim() || !name.trim() || !department || !finalGrade || !finalClassName) {
+    if (!studentId.trim() || !name.trim() || !finalDepartment || !finalGrade || !finalClassName) {
       setErrorMessage(t.requiredError);
       return;
     }
 
-    const cleanId = cleanStudentId(studentId);
+    const cleanId = detectedType === 'student' ? cleanStudentId(normalizedId) : normalizedId;
     const cleanN = cleanName(name);
 
     if (!cleanId || !cleanN) {
@@ -372,6 +422,7 @@ export default function GymCheckIn() {
 
     setStudentId(cleanId);
     setName(cleanN);
+    setUserType(detectedType);
 
     setLoading(true);
     const logTime = new Date().toISOString();
@@ -379,10 +430,10 @@ export default function GymCheckIn() {
     const logData = {
       student_id: cleanId,
       name: cleanN,
-      department: department,
+      department: finalDepartment,
       grade: finalGrade,
       class_name: finalClassName,
-      is_staff: userType === 'staff',
+      is_staff: detectedType === 'staff',
       checked_in_at: logTime,
       action: 'checkin' as const,
     };
@@ -425,6 +476,28 @@ export default function GymCheckIn() {
     }
   };
 
+  const handleStudentIdChange = (value: string) => {
+    const normalizedId = value.trim().toUpperCase();
+    const detectedType = detectUserType(normalizedId);
+
+    setStudentId(normalizedId);
+
+    if (detectedType === 'unknown') {
+      setUserType(null);
+      return;
+    }
+
+    setUserType(detectedType);
+    if (detectedType === 'staff') {
+      setDepartment('教職員');
+      setGrade('教職員');
+      setClassName('教職員');
+    } else if (department === '教職員' || grade === '教職員' || className === '教職員') {
+      setDepartment('');
+      setGrade('');
+      setClassName('');
+    }
+  };
   // ラズパイ(/api/scan)に撮影・OCRを依頼し、結果を既存のlookupCache処理に渡す。
   // カメラ自体はラズパイ側にあるため、ノートPC側でgetUserMediaは使用しない。
   const handleScanStudentId = async () => {
@@ -447,7 +520,7 @@ export default function GymCheckIn() {
       setOcrResult(`${t.detectLabel}: ${data.studentId}`);
       setStudentId(data.studentId);
       setOcrLoading(false);
-      await lookupCache(data.studentId);
+      await lookupUserStatus(data.studentId);
     } catch (err) {
       console.error('Raspi scan request failed:', err);
       setErrorMessage('ラズパイへの接続に失敗しました。WiFi接続状況を確認してください。');
@@ -504,132 +577,66 @@ export default function GymCheckIn() {
       {/* 1. 受付トップ画面 */}
       {screen === 'welcome' && (
         <div className="section" style={{ minHeight: '40vh', justifyContent: 'center' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '360px', margin: '0 auto' }}>
+          <p style={{ letterSpacing: '0.18em', color: 'var(--text-muted)', marginBottom: 28 }}>
+            SCAN OR ENTER YOUR ID TO CHECK IN / OUT
+          </p>
 
-            {/* 入室ボタン：通常時は背景をなじませ、ホバー時だけ緑色に */}
-            <button
-              style={{
-                ...baseBtnStyle,
-                backgroundColor: hoveredBtn === 'in' ? '#10b981' : '#2d3748',
-                color: '#ffffff',
-                border: hoveredBtn === 'in' ? '1px solid #10b981' : '1px solid var(--card-border)',
-              }}
-              onMouseEnter={() => setHoveredBtn('in')}
-              onMouseLeave={() => setHoveredBtn(null)}
-              onClick={() => handleModeSelect('checkin')}
-            >
-              {t.btnIn}
-            </button>
+          <div style={{ width: '100%', maxWidth: 520, margin: '0 auto' }}>
+            <div className="form-group">
+              <label className="label">{t.labelStudentId}</label>
+              <div style={{ position: 'relative', width: '100%' }}>
+                <input
+                  type="text"
+                  className="input-text"
+                  placeholder={t.placeholderId}
+                  value={studentId}
+                  onChange={(e) => handleStudentIdChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') lookupUserStatus(studentId);
+                  }}
+                  style={{ paddingRight: '50px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => lookupUserStatus(studentId)}
+                  disabled={loading || detectUserType(studentId) === 'unknown'}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    color: detectUserType(studentId) !== 'unknown' ? 'var(--primary)' : 'var(--text-muted)',
+                    cursor: detectUserType(studentId) !== 'unknown' ? 'pointer' : 'not-allowed',
+                    padding: '8px'
+                  }}
+                >
+                  {loading ? <Loader2 className="spinner" size={20} /> : <Keyboard size={20} />}
+                </button>
+              </div>
+            </div>
 
-            {/* 退室ボタン：通常時は背景をなじませ、ホバー時だけ別の色（オレンジ系）に */}
-            <button
-              style={{
-                ...baseBtnStyle,
-                backgroundColor: hoveredBtn === 'out' ? '#e82c22ff' : '#2d3748',
-                color: '#ffffff',
-                border: hoveredBtn === 'out' ? '1px solid #e82222ff' : '1px solid var(--card-border)',
-              }}
-              onMouseEnter={() => setHoveredBtn('out')}
-              onMouseLeave={() => setHoveredBtn(null)}
-              onClick={() => handleModeSelect('checkout')}
-            >
-              {t.btnOut}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '28px 0' }}>
+              <div style={{ flex: 1, height: 1, background: 'var(--card-border)' }} />
+              <span style={{ color: 'var(--text-muted)' }}>または</span>
+              <div style={{ flex: 1, height: 1, background: 'var(--card-border)' }} />
+            </div>
 
-            {/* 学生証スキャンボタン：通常時は背景をなじませ、ホバー時だけ深い緑に */}
             <button
-              style={{
-                ...baseBtnStyle,
-                fontSize: '1.2rem',
-                padding: '20px',
-                marginTop: '10px',
-                backgroundColor: hoveredBtn === 'scan' ? '#6db2b2' : '#2d3748',
-                color: '#ffffff',
-                border: hoveredBtn === 'scan' ? '1px solid #6db2b2' : '1px solid var(--card-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px'
-              }}
+              className="btn btn-primary"
+              style={{ width: '100%', justifyContent: 'center' }}
               onMouseEnter={() => setHoveredBtn('scan')}
               onMouseLeave={() => setHoveredBtn(null)}
               onClick={handleScanStudentId}
+              disabled={loading}
             >
               <Camera size={24} />
               {t.btnScan}
             </button>
-
           </div>
         </div>
       )}
-
-
-      {screen === 'user-type' && (
-        <div className="section" style={{ minHeight: '40vh', justifyContent: 'center' }}>
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
-              {t.selectType}
-            </h2>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              {t.selectTypeSub}
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '360px', margin: '0 auto' }}>
-
-            {/* 学生ボタン */}
-            <button
-              style={{
-                ...baseBtnStyle,
-                backgroundColor: hoveredBtn === 'student' ? 'var(--primary)' : '#2d3748',
-                color: '#ffffff',
-                border: hoveredBtn === 'student' ? '1px solid var(--primary)' : '1px solid var(--card-border)',
-              }}
-              onMouseEnter={() => setHoveredBtn('student')}
-              onMouseLeave={() => setHoveredBtn(null)}
-              onClick={() => {
-                setUserType('student');
-                setScreen('form');
-              }}
-            >
-              {t.student}
-            </button>
-
-            {/* 教職員ボタン */}
-            <button
-              style={{
-                ...baseBtnStyle,
-                backgroundColor: hoveredBtn === 'staff' ? '#8b5cf6' : '#2d3748', // ホバー時はパープル
-                color: '#ffffff',
-                border: hoveredBtn === 'staff' ? '1px solid #8b5cf6' : '1px solid var(--card-border)',
-              }}
-              onMouseEnter={() => setHoveredBtn('staff')}
-              onMouseLeave={() => setHoveredBtn(null)}
-              onClick={() => {
-                setUserType('staff');
-                setGrade('教職員');
-                setClassName('教職員');
-                setScreen('form');
-              }}
-            >
-              {t.staff}
-            </button>
-
-            {/* 戻るボタン */}
-            <button
-              className="btn btn-secondary"
-              style={{ marginTop: '10px', padding: '12px' }}
-              onClick={handleReset}
-            >
-              <ArrowLeft size={18} />
-              {t.btnBack}
-            </button>
-
-          </div>
-        </div>
-      )}
-
-      {/* スキャン画面（ラズパイにOCRを依頼している間の待機/結果表示） */}
       {screen === 'scan' && (
         <div className="section" style={{ justifyContent: 'center', minHeight: '40vh' }}>
           <div style={{ textAlign: 'center', marginBottom: '32px' }}>
@@ -679,25 +686,27 @@ export default function GymCheckIn() {
         </div>
       )}
 
-      {/* チェックアウト確認画面 */}
-      {screen === 'checkout-confirm' && (
+      {/* チェックイン確認画面(登録済み・未在室のユーザー向け) */}
+      {screen === 'checkin-confirm' && (
         <div className="section" style={{ textAlign: 'center' }}>
           <h2 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '8px' }}>
-            {t.statusActive}
+            {t.welcomeIn}
           </h2>
           <p className="success-name">{name} さん</p>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>
-            入室時刻: {checkoutLog && new Date(checkoutLog.checked_in_at).toLocaleTimeString('ja-JP')}
-          </p>
+          {userType === 'student' && (
+            <p style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>
+              {department} / {grade} / {className}
+            </p>
+          )}
           <p style={{ fontSize: '1.1rem', marginBottom: '32px' }}>
-            {t.checkoutConfirm}
+            Welcome!/ようこそ！
           </p>
           <div className="btn-group">
             <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleReset} disabled={loading}>
               {t.btnCancel}
             </button>
-            <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleCheckOut} disabled={loading}>
-              {loading ? <Loader2 className="spinner" size={20} /> : t.btnCheckout}
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => handleCheckInOrOut()} disabled={loading}>
+              {loading ? <Loader2 className="spinner" size={20} /> : t.btnCheckin}
             </button>
           </div>
         </div>
@@ -708,10 +717,10 @@ export default function GymCheckIn() {
         <div className="section" style={{ justifyContent: 'flex-start' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <h2 style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
-              {welcomeMode === 'checkin' ? t.btnIn : t.btnOut}({userType === 'student' ? t.student : t.staff})
+              {t.btnIn}{userType ? '(' : ''}{userType === 'student' ? t.student : userType === 'staff' ? t.staff : ''}{userType ? ')' : ''}
             </h2>
             <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              {welcomeMode === 'checkin' ? t.welcomeIn : t.welcomeOut}
+              {t.welcomeIn}
             </p>
           </div>
 
@@ -725,18 +734,18 @@ export default function GymCheckIn() {
                   className="input-text"
                   placeholder={t.placeholderId}
                   value={studentId}
-                  onChange={(e) => setStudentId(cleanStudentId(e.target.value))}
+                  onChange={(e) => handleStudentIdChange(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && studentId.length >= 4) {
-                      lookupCache(studentId);
+                    if (e.key === 'Enter' && detectUserType(studentId) !== 'unknown') {
+                      lookupUserStatus(studentId);
                     }
                   }}
                   style={{ paddingRight: '50px' }}
                 />
                 <button
                   type="button"
-                  onClick={() => studentId.length >= 4 && lookupCache(studentId)}
-                  disabled={studentId.length < 4 || loading}
+                  onClick={() => detectUserType(studentId) !== 'unknown' && lookupUserStatus(studentId)}
+                  disabled={detectUserType(studentId) === 'unknown' || loading}
                   style={{
                     position: 'absolute',
                     right: '8px',
@@ -744,8 +753,8 @@ export default function GymCheckIn() {
                     transform: 'translateY(-50%)',
                     background: 'transparent',
                     border: 'none',
-                    color: studentId.length >= 4 ? 'var(--primary)' : 'var(--text-muted)',
-                    cursor: studentId.length >= 4 ? 'pointer' : 'not-allowed',
+                    color: detectUserType(studentId) !== 'unknown' ? 'var(--primary)' : 'var(--text-muted)',
+                    cursor: detectUserType(studentId) !== 'unknown' ? 'pointer' : 'not-allowed',
                     padding: '8px'
                   }}
                 >
@@ -766,80 +775,70 @@ export default function GymCheckIn() {
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '480px', flexWrap: 'wrap' }}>
+            {userType === 'student' && (
+              <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '480px', flexWrap: 'wrap' }}>
+                <div className="form-group" style={{ flex: '2 1 200px' }}>
+                  <label className="label">{t.labelDept}</label>
+                  <select
+                    className="select-box"
+                    value={department}
+                    onChange={(e) => handleDepartmentChange(e.target.value)}
+                  >
+                    <option value="">{t.selectDefault}</option>
+                    {dynamicDepartments.map((dept, index) => (
+                      <option key={index} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                </div>
 
-              {/* 🔄 学科/所属の選択（動的マスタを参照） */}
-              <div className="form-group" style={{ flex: '2 1 200px' }}>
-                <label className="label">{t.labelDept}</label>
-                <select
-                  className="select-box"
-                  value={department}
-                  onChange={(e) => handleDepartmentChange(e.target.value)}
-                >
-                  <option value="">{t.selectDefault}</option>
-                  {dynamicDepartments.map((dept, index) => (
-                    <option key={index} value={dept}>{dept}</option>
-                  ))}
-                </select>
+                <div className="form-group" style={{ flex: '1 1 140px' }}>
+                  <label className="label">{t.labelGrade}</label>
+                  <select
+                    className="select-box"
+                    value={grade}
+                    onChange={(e) => { setGrade(e.target.value); setClassName(''); }}
+                    disabled={!department}
+                  >
+                    <option value="">{t.selectDefault}</option>
+                    {GRADES.filter(g => g !== '教職員')
+                      .slice(0, department ? (deptToYearsMap[department] ?? 4) : 4)
+                      .map((g, index) => (
+                        <option key={index} value={g}>{g}</option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ flex: '1 1 120px' }}>
+                  <label className="label">{t.labelClass}</label>
+                  <select
+                    className="select-box"
+                    value={className}
+                    onChange={(e) => setClassName(e.target.value)}
+                    disabled={!department || !grade}
+                  >
+                    <option value="">{t.selectDefault}</option>
+                    {(() => {
+                      const gradeNum = parseInt(grade?.charAt(0) || '0', 10);
+                      const allClasses = deptToClassesMap[department] || [];
+                      const filtered = allClasses.filter(c => c.grade === gradeNum);
+                      return filtered.length > 0
+                        ? filtered.map(c => (
+                            <option key={String(c.grade) + '-' + c.class_name} value={c.class_name}>
+                              {c.class_name}
+                            </option>
+                          ))
+                        : <option value="" disabled>クラス未登録</option>;
+                    })()}
+                  </select>
+                </div>
               </div>
-
-              {/* 学生の場合のみ、学年とクラスの入力欄を動的に表示 */}
-              {userType === 'student' && (
-                <>
-                  {/* 学年プルダウン: 選択した学科の修業年限で絞り込み */}
-                  <div className="form-group" style={{ flex: '1 1 140px' }}>
-                    <label className="label">{t.labelGrade}</label>
-                    <select
-                      className="select-box"
-                      value={grade}
-                      onChange={(e) => { setGrade(e.target.value); setClassName(''); }}
-                      disabled={!department}
-                    >
-                      <option value="">{t.selectDefault}</option>
-                      {GRADES.filter(g => g !== '教職員')
-                        .slice(0, department ? (deptToYearsMap[department] ?? 4) : 4)
-                        .map((g, index) => (
-                          <option key={index} value={g}>{g}</option>
-                        ))}
-                    </select>
-                  </div>
-
-                  {/* 🔄 クラスプルダウン: 選択した学年のクラスのみ表示 */}
-                  <div className="form-group" style={{ flex: '1 1 120px' }}>
-                    <label className="label">{t.labelClass}</label>
-                    <select
-                      className="select-box"
-                      value={className}
-                      onChange={(e) => setClassName(e.target.value)}
-                      disabled={!department || !grade} // 学科・学年が選ばれるまで選択不可
-                    >
-                      <option value="">{t.selectDefault}</option>
-                      {(() => {
-                        // 選択した学科 + 学年に対応するクラス一覧を取得
-                        const gradeNum = parseInt(grade?.charAt(0) || '0', 10);
-                        const allClasses = deptToClassesMap[department] || [];
-                        const filtered = allClasses.filter(c => c.grade === gradeNum);
-                        return filtered.length > 0
-                          ? filtered.map(c => (
-                              <option key={`${c.grade}-${c.class_name}`} value={c.class_name}>
-                                {c.class_name}
-                              </option>
-                            ))
-                          : <option value="" disabled>クラス未登録</option>;
-                      })()}
-                    </select>
-                  </div>
-                </>
-              )}
-
-            </div>
-
+            )}
             <div className="btn-group" style={{ marginTop: '24px' }}>
               <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={handleReset} disabled={loading}>
                 {t.btnCancel}
               </button>
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>
-                {loading ? <Loader2 className="spinner" size={20} /> : (welcomeMode === 'checkin' ? t.btnCheckin : t.btnCheckout)}
+                {loading ? <Loader2 className="spinner" size={20} /> : t.btnCheckin}
               </button>
             </div>
           </form>
@@ -861,6 +860,11 @@ export default function GymCheckIn() {
           <p style={{ color: 'var(--text-muted)' }}>
             {successType === 'checkout' ? t.msgCheckout : t.msgCheckin}
           </p>
+          {checkoutNotice && (
+            <p style={{ marginTop: 12, color: '#ffb86b', fontWeight: 600 }}>
+              {checkoutNotice}
+            </p>
+          )}
           <div style={{ marginTop: '40px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
             <Loader2 className="spinner" size={16} />
             <span>{t.autoBack}</span>

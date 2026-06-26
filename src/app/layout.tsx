@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GYM RESERVE - ジム利用記録システム",
+  title: "GYM RESERVATION - ジム利用記録システム",
   description: "簡単操作のジム入室記録システム",
 };
 

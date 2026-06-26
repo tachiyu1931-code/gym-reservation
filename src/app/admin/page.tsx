@@ -408,7 +408,7 @@ export default function AdminDashboard() {
           onClick={() => { setActiveTab('cache'); setSearchQuery(''); setFilterDept(''); setFilterDate(''); }}
         >
           <Users size={16} />
-          学生キャッシュ管理
+          利用者キャッシュ管理
         </button>
         <button
           className={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
