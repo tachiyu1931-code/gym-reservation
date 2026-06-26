@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server';
 import {
-  SUPPORTED_LANGUAGES,
   TRANSLATIONS,
-  type SupportedLanguage,
+  isSupportedLanguage,
 } from '@/lib/translations';
-
-function isSupportedLanguage(value: string | null): value is SupportedLanguage {
-  return SUPPORTED_LANGUAGES.includes(value as SupportedLanguage);
-}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

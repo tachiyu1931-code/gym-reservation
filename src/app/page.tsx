@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -15,11 +15,31 @@ import { saveOfflineLog, getOfflineLogs, deleteOfflineLog } from '@/utils/db';
 import { DEPARTMENTS } from '@/constants/departments';
 import { cleanStudentId, cleanName } from '@/utils/cleansing';
 import { detectUserType } from '@/utils/detectUserType';
-import type { SupportedLanguage, TranslationMessages } from '@/lib/translations';
+import { DEFAULT_LANGUAGE, TRANSLATIONS, type SupportedLanguage, type TranslationMessages } from '@/lib/translations';
 
 
 const GRADES = ['1年', '2年', '3年', '4年', '教職員'];
 const STAFF_LABEL = '教職員';
+
+const GRADE_LABEL_KEYS: Record<string, keyof Pick<TranslationMessages, 'grade1' | 'grade2' | 'grade3' | 'grade4'>> = {
+  '1年': 'grade1',
+  '2年': 'grade2',
+  '3年': 'grade3',
+  '4年': 'grade4',
+};
+
+type MessageValues = Record<string, string | number>;
+
+function formatMessage(template: string, values: MessageValues) {
+  return Object.entries(values).reduce(
+    (message, [key, value]) => message.replaceAll('{' + key + '}', String(value)),
+    template
+  );
+}
+
+function formatDisplayName(displayName: string, suffix: string) {
+  return suffix ? displayName + ' ' + suffix : displayName;
+}
 
 type Screen = 'welcome' | 'scan' | 'form' | 'checkin-confirm' | 'checkout-confirm' | 'success';
 
@@ -36,12 +56,12 @@ type UsageLogLike = {
 
 export default function GymCheckIn() {
   const [lang, setLang] = useState<SupportedLanguage>(() => {
-    if (typeof window === 'undefined') return 'ja';
+    if (typeof window === 'undefined') return DEFAULT_LANGUAGE;
 
     const savedLang = localStorage.getItem('gym_lang');
-    return savedLang === 'ja' || savedLang === 'en' ? savedLang : 'ja';
+    return savedLang === 'ja' || savedLang === 'en' ? savedLang : DEFAULT_LANGUAGE;
   });
-  const [translations, setTranslations] = useState<TranslationMessages | null>(null);
+  const [translations, setTranslations] = useState<TranslationMessages>(() => TRANSLATIONS[DEFAULT_LANGUAGE]);
   const [translationError, setTranslationError] = useState('');
 
 
@@ -63,7 +83,7 @@ export default function GymCheckIn() {
       } catch (err) {
         if ((err as Error).name === 'AbortError') return;
         console.error('Failed to load translations:', err);
-        setTranslationError('表示文言の取得に失敗しました。');
+        setTranslationError(TRANSLATIONS[lang].translationLoadErr);
       }
     };
 
@@ -74,10 +94,11 @@ export default function GymCheckIn() {
 
   const handleLanguageChange = (selectedLang: SupportedLanguage) => {
     setLang(selectedLang);
+    setTranslations(TRANSLATIONS[selectedLang]);
     localStorage.setItem('gym_lang', selectedLang);
   };
 
-  const t = translations ?? (new Proxy({}, { get: () => '' }) as TranslationMessages);
+  const t = translations;
 
   const [screen, setScreen] = useState<Screen>('welcome');
 
@@ -104,9 +125,6 @@ export default function GymCheckIn() {
   const [checkoutLog, setCheckoutLog] = useState<UsageLogLike | null>(null);
   const [checkoutNotice, setCheckoutNotice] = useState('');
   const [successType, setSuccessType] = useState<'checkin' | 'checkout'>('checkin');
-
-  // ホバー状態を管理するためのState
-  const [hoveredBtn, setHoveredBtn] = useState<'scan' | null>(null);
 
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recentInputRef = useRef<{ id: string; at: number } | null>(null);
@@ -246,7 +264,6 @@ export default function GymCheckIn() {
     setCheckoutNotice('');
     setSuccessType('checkin');
     setUserType(null);
-    setHoveredBtn(null);
   };
 
   useEffect(() => {
@@ -281,8 +298,11 @@ export default function GymCheckIn() {
     a.getDate() === b.getDate();
 
   const formatMonthDay = (dateString: string) => {
-    const date = new Date(dateString);
-    return `${date.getMonth() + 1}月${date.getDate()}日`;
+    const formatter = new Intl.DateTimeFormat(lang === 'ja' ? 'ja-JP' : 'en-US', {
+      month: 'numeric',
+      day: 'numeric',
+    });
+    return formatter.format(new Date(dateString));
   };
   const lookupUserStatus = async (id: string) => {
     const normalizedId = id.trim().toUpperCase();
@@ -295,7 +315,7 @@ export default function GymCheckIn() {
 
     const now = Date.now();
     if (recentInputRef.current?.id === normalizedId && now - recentInputRef.current.at < 3000) {
-      setErrorMessage('処理中です');
+      setErrorMessage(t.processing);
       return;
     }
     recentInputRef.current = { id: normalizedId, at: now };
@@ -373,7 +393,7 @@ export default function GymCheckIn() {
 
       const checkedInAt = new Date(targetLog.checked_in_at);
       if (!isSameLocalDate(checkedInAt, checkedOutAt)) {
-        setCheckoutNotice(`${formatMonthDay(targetLog.checked_in_at)}からの利用記録をチェックアウトしました`);
+        setCheckoutNotice(formatMessage(t.checkoutNotice, { date: formatMonthDay(targetLog.checked_in_at) }));
       }
 
       setScannedName(targetLog.name || name);
@@ -512,7 +532,7 @@ export default function GymCheckIn() {
       const data = await res.json();
 
       if (!data.success || !data.studentId) {
-        setErrorMessage(data.error || '学籍番号を読み取れませんでした。もう一度お試しください。');
+        setErrorMessage(t.scanReadErr);
         setOcrLoading(false);
         return; // scan画面に留まり、再試行ボタンで再スキャンできるようにする
       }
@@ -523,20 +543,9 @@ export default function GymCheckIn() {
       await lookupUserStatus(data.studentId);
     } catch (err) {
       console.error('Raspi scan request failed:', err);
-      setErrorMessage('ラズパイへの接続に失敗しました。WiFi接続状況を確認してください。');
+      setErrorMessage(t.raspiConnectionErr);
       setOcrLoading(false);
     }
-  };
-
-  // トップ画面ボタンのベースとなる共通スタイル
-  const baseBtnStyle = {
-    fontSize: '1.4rem',
-    padding: '24px',
-    borderRadius: '16px',
-    border: '1px solid var(--card-border)',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    outline: 'none',
   };
 
   return (
@@ -578,7 +587,7 @@ export default function GymCheckIn() {
       {screen === 'welcome' && (
         <div className="section" style={{ minHeight: '40vh', justifyContent: 'center' }}>
           <p style={{ letterSpacing: '0.18em', color: 'var(--text-muted)', marginBottom: 28 }}>
-            SCAN OR ENTER YOUR ID TO CHECK IN / OUT
+            {t.heroPrompt}
           </p>
 
           <div style={{ width: '100%', maxWidth: 520, margin: '0 auto' }}>
@@ -619,15 +628,13 @@ export default function GymCheckIn() {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '28px 0' }}>
               <div style={{ flex: 1, height: 1, background: 'var(--card-border)' }} />
-              <span style={{ color: 'var(--text-muted)' }}>または</span>
+              <span style={{ color: 'var(--text-muted)' }}>{t.or}</span>
               <div style={{ flex: 1, height: 1, background: 'var(--card-border)' }} />
             </div>
 
             <button
               className="btn btn-primary"
               style={{ width: '100%', justifyContent: 'center' }}
-              onMouseEnter={() => setHoveredBtn('scan')}
-              onMouseLeave={() => setHoveredBtn(null)}
               onClick={handleScanStudentId}
               disabled={loading}
             >
@@ -692,14 +699,14 @@ export default function GymCheckIn() {
           <h2 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '8px' }}>
             {t.welcomeIn}
           </h2>
-          <p className="success-name">{name} さん</p>
+          <p className="success-name">{formatDisplayName(name, t.personSuffix)}</p>
           {userType === 'student' && (
             <p style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>
-              {department} / {grade} / {className}
+              {department} / {GRADE_LABEL_KEYS[grade] ? t[GRADE_LABEL_KEYS[grade]] : grade} / {className}
             </p>
           )}
           <p style={{ fontSize: '1.1rem', marginBottom: '32px' }}>
-            Welcome!/ようこそ！
+            {t.welcomeMessage}
           </p>
           <div className="btn-group">
             <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleReset} disabled={loading}>
@@ -803,7 +810,7 @@ export default function GymCheckIn() {
                     {GRADES.filter(g => g !== '教職員')
                       .slice(0, department ? (deptToYearsMap[department] ?? 4) : 4)
                       .map((g, index) => (
-                        <option key={index} value={g}>{g}</option>
+                        <option key={index} value={g}>{t[GRADE_LABEL_KEYS[g]]}</option>
                       ))}
                   </select>
                 </div>
@@ -827,7 +834,7 @@ export default function GymCheckIn() {
                               {c.class_name}
                             </option>
                           ))
-                        : <option value="" disabled>クラス未登録</option>;
+                        : <option value="" disabled>{t.classUnregistered}</option>;
                     })()}
                   </select>
                 </div>
@@ -856,7 +863,7 @@ export default function GymCheckIn() {
           <h2 className="success-text-big">
             {successType === 'checkout' ? t.successCheckout : t.successCheckin}
           </h2>
-          <p className="success-name">{scannedName} さん</p>
+          <p className="success-name">{formatDisplayName(scannedName, t.personSuffix)}</p>
           <p style={{ color: 'var(--text-muted)' }}>
             {successType === 'checkout' ? t.msgCheckout : t.msgCheckin}
           </p>
@@ -871,14 +878,13 @@ export default function GymCheckIn() {
           </div>
         </div>
       )}
-
       {/* ステータスバッジ */}
       <div className={`status-badge ${isOnline ? 'status-online' : 'status-offline'}`}>
         <div className="status-dot"></div>
         <span>
           {isOnline
-            ? 'ONLINE'
-            : `OFFLINE (未送信: ${offlineCount}件)`
+            ? t.statusOnline
+            : `${t.statusOffline} (${formatMessage(t.statusUnsent, { count: offlineCount })})`
           }
         </span>
         {!isOnline && offlineCount > 0 && (
@@ -893,7 +899,7 @@ export default function GymCheckIn() {
               alignItems: 'center',
               marginLeft: '4px'
             }}
-            title="再試行"
+            title={t.retryTitle}
           >
             <RefreshCw size={12} />
           </button>
