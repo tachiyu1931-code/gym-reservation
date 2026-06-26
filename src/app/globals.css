@@ -404,3 +404,22 @@ body {
   color: var(--primary);
   margin-top: 8px;
 }
+
+/* 通常時の受付ボタン（背景を少し暗めのトーンに落とす） */
+.welcome-btn {
+  background-color: #334155 !important;
+  /* slate-700相当 */
+  color: #ffffff !important;
+  transition: background-color 0.2s ease;
+}
+
+/* カーソルを合わせた（ホバーした）時の色 */
+.welcome-btn-in:hover {
+  background-color: #10b981 !important;
+  /* 入室：鮮やかな緑 */
+}
+
+.welcome-btn-out:hover {
+  background-color: #f97316 !important;
+  /* 退室：お好みの色（例：オレンジや赤） */
+}

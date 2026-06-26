@@ -12,14 +12,28 @@ import {
   X,
   Loader2,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Settings
 } from 'lucide-react';
 import {
   getUsageLogs,
   deleteUsageLog,
+  restoreUsageLog,
+  permanentDeleteUsageLog,
+  getDeletedUsageLogs,
   getUsersCache,
   updateStudentCache,
-  deleteStudentCache
+  deleteStudentCache,
+  restoreStudentCache,
+  permanentDeleteStudentCache,
+  getDeletedStudentCaches,
+  getDepartmentMasters,
+  addDepartment,
+  deleteDepartment,
+  addDepartmentClass,
+  deleteDepartmentClass,
+  updateDepartmentYears,
+  type DepartmentMaster
 } from './actions';
 import './admin.css';
 import { DEPARTMENTS, normalizeDepartment } from '@/constants/departments';
@@ -31,7 +45,8 @@ interface UsageLog {
   name: string;
   department: string;
   grade: string;
-  class_name: string;
+  class_name?: string;
+  is_staff: boolean;
   checked_in_at: string;
   checked_out_at: string | null;
   created_at: string;
@@ -43,7 +58,7 @@ interface UserCache {
   name: string;
   department: string;
   grade: string;
-  class_name: string;
+  class_name?: string;
   checked_in_at: string;
   checked_out_at: string | null;
   created_at: string;
@@ -51,11 +66,22 @@ interface UserCache {
 }
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<'logs' | 'cache' | 'stats'>('logs');
+  const [activeTab, setActiveTab] = useState<'logs' | 'cache' | 'stats' | 'departments' | 'trash'>('logs');
 
   // データステート
   const [logs, setLogs] = useState<UsageLog[]>([]);
   const [caches, setCaches] = useState<UserCache[]>([]);
+
+  // 学科・クラス管理用ステート
+  const [departments, setDepartments] = useState<DepartmentMaster[]>([]);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [newDeptYears, setNewDeptYears] = useState(2);
+  // クラス追加入力: { [deptId]: { grade: string; className: string } }
+  const [newClassInputs, setNewClassInputs] = useState<Record<number, { grade: string; className: string }>>({});
+
+  // ゴミ箱用ステート
+  const [deletedLogs, setDeletedLogs] = useState<UsageLog[]>([]);
+  const [deletedCaches, setDeletedCaches] = useState<UserCache[]>([]);
 
   // フィルター・検索ステート
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,19 +99,24 @@ export default function AdminDashboard() {
   const [editName, setEditName] = useState('');
   const [editDept, setEditDept] = useState('');
   const [editGrade, setEditGrade] = useState('');
-  const [editClass, setEditClass] = useState('');
 
   // データロード
   const loadData = async () => {
     setLoading(true);
     setErrorMsg('');
     try {
-      const [logsData, cachesData] = await Promise.all([
+      const [logsData, cachesData, deptData, delLogsData, delCachesData] = await Promise.all([
         getUsageLogs() as Promise<UsageLog[]>,
-        getUsersCache() as Promise<UserCache[]>
+        getUsersCache() as Promise<UserCache[]>,
+        getDepartmentMasters(),
+        getDeletedUsageLogs() as Promise<UsageLog[]>,
+        getDeletedStudentCaches() as Promise<UserCache[]>,
       ]);
       setLogs(logsData);
       setCaches(cachesData);
+      setDepartments(deptData);
+      setDeletedLogs(delLogsData);
+      setDeletedCaches(delCachesData);
     } catch (err: any) {
       console.error('Failed to load admin data:', err);
       setErrorMsg('データの取得に失敗しました。データベースの接続を確認してください。');
@@ -98,14 +129,16 @@ export default function AdminDashboard() {
     loadData();
   }, []);
 
-  // ログ削除
+  // ログをゴミ箱へ移動（論理削除）
   const handleDeleteLog = async (id: number) => {
-    if (!window.confirm('この利用記録を削除してもよろしいですか？')) return;
+    if (!window.confirm('この利用記録をゴミ筱に移動しますか？\n30日以内は復元可能です。')) return;
 
     setActionLoading(true);
     try {
       await deleteUsageLog(id);
       setLogs(prev => prev.filter(log => log.id !== id));
+      const updatedDeleted = await getDeletedUsageLogs() as UsageLog[];
+      setDeletedLogs(updatedDeleted);
     } catch (err) {
       alert('削除に失敗しました。');
     } finally {
@@ -113,14 +146,16 @@ export default function AdminDashboard() {
     }
   };
 
-  // キャッシュ削除
+  // キャッシュをゴミ箱へ移動（論理削除）
   const handleDeleteCache = async (studentId: string) => {
-    if (!window.confirm(`学籍番号 ${studentId} のキャッシュデータを削除しますか？\n(削除後も、該当の学生が次回利用時に手動入力すれば再登録されます)`)) return;
+    if (!window.confirm(`学籍番号 ${studentId} のキャッシュデータをゴミ筱に移動しますか？\n30日以内は復元可能です。`)) return;
 
     setActionLoading(true);
     try {
       await deleteStudentCache(studentId);
       setCaches(prev => prev.filter(c => c.student_id !== studentId));
+      const updatedDeleted = await getDeletedStudentCaches() as UserCache[];
+      setDeletedCaches(updatedDeleted);
     } catch (err) {
       alert('削除に失敗しました。');
     } finally {
@@ -128,16 +163,18 @@ export default function AdminDashboard() {
     }
   };
 
-  // キャッシュ更新モーダルオープン
+
+  // キャッシュ更新処理
+  const [editClassName, setEditClassName] = useState('');
+
   const openEditModal = (cache: UserCache) => {
     setEditingCache(cache);
     setEditName(cache.name);
     setEditDept(cache.department);
     setEditGrade(cache.grade);
-    setEditClass(cache.class_name);
+    setEditClassName(cache.class_name || '');
   };
 
-  // キャッシュ更新処理
   const handleUpdateCache = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCache) return;
@@ -149,13 +186,12 @@ export default function AdminDashboard() {
         editName,
         editDept,
         editGrade,
-        editClass
+        editClassName
       );
 
-      // ローカルステートを更新
       setCaches(prev => prev.map(c =>
         c.student_id === editingCache.student_id
-          ? { ...c, name: editName, department: editDept, grade: editGrade, class_name: editClass, updated_at: new Date().toISOString() }
+          ? { ...c, name: editName, department: editDept, grade: editGrade, class_name: editClassName, updated_at: new Date().toISOString() }
           : c
       ));
       setEditingCache(null);
@@ -166,12 +202,92 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleAddDepartment = async () => {
+    const name = newDeptName.trim();
+    if (!name) return;
+    setActionLoading(true);
+    try {
+      await addDepartment(name, newDeptYears);
+      setNewDeptName('');
+      setNewDeptYears(2);
+      const updated = await getDepartmentMasters();
+      setDepartments(updated);
+    } catch (err: any) {
+      alert(err.message || '学科の追加に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleChangeYears = async (departmentId: number, years: number) => {
+    setActionLoading(true);
+    try {
+      await updateDepartmentYears(departmentId, years);
+      setDepartments(prev =>
+        prev.map(d => d.id === departmentId ? { ...d, years } : d)
+      );
+    } catch (err: any) {
+      alert(err.message || '修業年限の更新に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteDepartment = async (id: number, name: string) => {
+    if (!window.confirm(`学科「${name}」を削除しますか？\n紐づくクラス情報も削除されます。`)) return;
+    setActionLoading(true);
+    try {
+      await deleteDepartment(id);
+      setDepartments(prev => prev.filter(d => d.id !== id));
+    } catch (err) {
+      alert('削除に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAddClass = async (departmentId: number) => {
+    const input = newClassInputs[departmentId] || { grade: '1', className: '' };
+    const className = input.className.trim().toUpperCase();
+    const grade = Number(input.grade);
+    if (!className || !Number.isInteger(grade) || grade < 1 || grade > 6) return;
+    setActionLoading(true);
+    try {
+      await addDepartmentClass(departmentId, grade, className);
+      setNewClassInputs(prev => ({ ...prev, [departmentId]: { grade: '1', className: '' } }));
+      const updated = await getDepartmentMasters();
+      setDepartments(updated);
+    } catch (err: any) {
+      alert(err.message || 'クラスの追加に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteClass = async (departmentId: number, cls: { grade: number; class_name: string }) => {
+    if (!window.confirm(`クラス「${cls.grade}年 ${cls.class_name}」を削除しますか？`)) return;
+    setActionLoading(true);
+    try {
+      await deleteDepartmentClass(departmentId, cls.grade, cls.class_name);
+      setDepartments(prev =>
+        prev.map(d =>
+          d.id === departmentId
+            ? { ...d, classes: d.classes.filter(c => !(c.grade === cls.grade && c.class_name === cls.class_name)) }
+            : d
+        )
+      );
+    } catch (err) {
+      alert('削除に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // フィルタリング処理（利用ログ用）
   const filteredLogs = logs.filter(log => {
     const matchesSearch =
       log.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.student_id.includes(searchQuery) ||
-      log.class_name.toLowerCase().includes(searchQuery.toLowerCase());
+      log.student_id.includes(searchQuery);
 
     const matchesDept = filterDept === '' || normalizeDepartment(log.department) === filterDept;
 
@@ -199,8 +315,7 @@ export default function AdminDashboard() {
   const filteredCaches = caches.filter(c => {
     const matchesSearch =
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.student_id.includes(searchQuery) ||
-      c.class_name.toLowerCase().includes(searchQuery.toLowerCase());
+      c.student_id.includes(searchQuery);
 
     const matchesDept = filterDept === '' || normalizeDepartment(c.department) === filterDept;
 
@@ -227,7 +342,7 @@ export default function AdminDashboard() {
         log.name,
         normalizeDepartment(log.department),
         log.grade,
-        log.class_name
+        log.class_name || ''
       ];
     });
 
@@ -280,6 +395,13 @@ export default function AdminDashboard() {
         >
           <History size={16} />
           利用ログ一覧
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'departments' ? 'active' : ''}`}
+          onClick={() => setActiveTab('departments')}
+        >
+          <Settings size={16} />
+          学科・クラス管理
         </button>
         <button
           className={`tab-btn ${activeTab === 'cache' ? 'active' : ''}`}
@@ -452,7 +574,7 @@ export default function AdminDashboard() {
                         </td>
                         <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{log.student_id}</td>
                         <td style={{ fontWeight: 500 }}>{log.name}</td>
-                        <td>{log.class_name}</td>
+                        <td>{log.class_name || '-'}</td>
                         <td>{normalizeDepartment(log.department)} ({log.grade})</td>
                         <td>
                           <button
@@ -525,7 +647,6 @@ export default function AdminDashboard() {
                     <th>氏名</th>
                     <th>学科</th>
                     <th>学年</th>
-                    <th>クラス名</th>
                     <th>最終更新</th>
                     <th>操作</th>
                   </tr>
@@ -537,7 +658,6 @@ export default function AdminDashboard() {
                       <td style={{ fontWeight: 500 }}>{c.name}</td>
                       <td>{c.department}</td>
                       <td>{c.grade}</td>
-                      <td>{c.class_name}</td>
                       <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                         {new Date(c.updated_at).toLocaleString('ja-JP')}
                       </td>
@@ -569,7 +689,6 @@ export default function AdminDashboard() {
           </div>
         </>
       )}
-
       {/* タブ3: 利用統計 */}
       {activeTab === 'stats' && !loading && (
         <div className="section" style={{ justifyContent: 'flex-start', alignItems: 'stretch' }}>
@@ -662,7 +781,7 @@ export default function AdminDashboard() {
                       <div>
                         <span style={{ fontWeight: 600 }}>{log.name}</span>
                         <span style={{ color: 'var(--text-muted)', marginLeft: '8px', fontSize: '0.8rem' }}>
-                          {log.department} {log.class_name}
+                          {log.department}
                         </span>
                       </div>
                       <span style={{ color: 'var(--primary)', fontSize: '0.85rem' }}>
@@ -673,6 +792,167 @@ export default function AdminDashboard() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* タブ4: 学科・クラス管理 */}
+      {activeTab === 'departments' && !loading && (
+        <div className="section" style={{ justifyContent: 'flex-start', alignItems: 'stretch' }}>
+
+          {/* 学科の新規追加フォーム */}
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', maxWidth: '480px' }}>
+            <input
+              type="text"
+              className="input-text"
+              placeholder="新しい学科名を入力"
+              value={newDeptName}
+              onChange={(e) => setNewDeptName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddDepartment()}
+              style={{ flex: 2 }}
+            />
+            <select
+              className="select-box"
+              value={newDeptYears}
+              onChange={(e) => setNewDeptYears(Number(e.target.value))}
+              style={{ flex: 1 }}
+            >
+              {[1, 2, 3, 4].map(y => (
+                <option key={y} value={y}>{y}年制</option>
+              ))}
+            </select>
+            <button
+              className="btn btn-primary"
+              style={{ width: 'auto', padding: '0 20px' }}
+              onClick={handleAddDepartment}
+              disabled={actionLoading || !newDeptName.trim()}
+            >
+              追加
+            </button>
+          </div>
+
+          {/* 学科一覧カード */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {departments.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)' }}>学科が登録されていません。</p>
+            ) : (
+              departments.map((dept) => (
+                <div
+                  key={dept.id}
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.4)',
+                    border: '1px solid var(--card-border)',
+                    borderRadius: '16px',
+                    padding: '20px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>{dept.name}</h3>
+                      <select
+                        className="select-box"
+                        value={dept.years}
+                        onChange={(e) => handleChangeYears(dept.id, Number(e.target.value))}
+                        disabled={actionLoading}
+                        style={{ width: 'auto', padding: '4px 8px', fontSize: '0.85rem' }}
+                      >
+                        {[1, 2, 3, 4].map(y => (
+                          <option key={y} value={y}>{y}年制</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      className="btn-sm btn-danger-sm"
+                      onClick={() => handleDeleteDepartment(dept.id, dept.name)}
+                      disabled={actionLoading}
+                    >
+                      <Trash2 size={14} />
+                      学科を削除
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+                    {dept.classes.length === 0 ? (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>クラス未登録</span>
+                    ) : (
+                      dept.classes.map((cls) => (
+                        <span
+                          key={`${cls.grade}-${cls.class_name}`}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '4px 10px',
+                            borderRadius: '9999px',
+                            background: 'rgba(16,185,129,0.12)',
+                            border: '1px solid var(--primary)',
+                            fontSize: '0.85rem'
+                          }}
+                        >
+                          {cls.grade}年 {cls.class_name}
+                          <button
+                            onClick={() => handleDeleteClass(dept.id, cls)}
+                            disabled={actionLoading}
+                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}
+                            title="このクラスを削除"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', maxWidth: '320px', flexWrap: 'wrap' }}>
+                    <select
+                      className="select-box"
+                      value={newClassInputs[dept.id]?.grade || '1'}
+                      onChange={(e) =>
+                        setNewClassInputs(prev => ({
+                          ...prev,
+                          [dept.id]: {
+                            grade: e.target.value,
+                            className: prev[dept.id]?.className || '',
+                          },
+                        }))
+                      }
+                      disabled={actionLoading}
+                      style={{ width: '80px' }}
+                    >
+                      {[1, 2, 3, 4, 5, 6].map((year) => (
+                        <option key={year} value={String(year)}>{year}年</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      className="input-text"
+                      placeholder="例: A組"
+                      maxLength={10}
+                      value={newClassInputs[dept.id]?.className || ''}
+                      onChange={(e) => {
+                        const value = e.target.value.toUpperCase();
+                        setNewClassInputs(prev => ({
+                          ...prev,
+                          [dept.id]: {
+                            grade: prev[dept.id]?.grade || '1',
+                            className: value,
+                          },
+                        }));
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddClass(dept.id)}
+                    />
+                    <button
+                      className="btn btn-secondary"
+                      style={{ width: 'auto', padding: '0 16px' }}
+                      onClick={() => handleAddClass(dept.id)}
+                      disabled={actionLoading || !(newClassInputs[dept.id]?.className || '').trim()}
+                    >
+                      クラス追加
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -745,18 +1025,6 @@ export default function AdminDashboard() {
                   />
                 </div>
               </div>
-
-              <div className="form-group" style={{ maxWidth: '100%' }}>
-                <label className="label">クラス名</label>
-                <input
-                  type="text"
-                  className="input-text"
-                  value={editClass}
-                  onChange={(e) => setEditClass(e.target.value)}
-                  required
-                />
-              </div>
-
               <div className="btn-group" style={{ maxWidth: '100%', marginTop: '30px' }}>
                 <button
                   type="button"

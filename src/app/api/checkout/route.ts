@@ -52,6 +52,7 @@ export async function GET(request: Request) {
             .select('*')
             .eq('student_id', student_id)
             .is('checked_out_at', null)
+            .is('deleted_at', null)   // 論理削除済みを除外
             .order('checked_in_at', { ascending: false })
             .limit(1)
             .single();
@@ -92,7 +93,8 @@ export async function POST(request: Request) {
             .from('usage_logs')
             .update({ checked_out_at })
             .eq('id', log_id)
-            .is('checked_out_at', null); // 二重チェックアウト防止
+            .is('checked_out_at', null)  // 二重チェックアウト防止
+            .is('deleted_at', null);     // 論理削除済みは対象外
 
         if (error) throw error;
 

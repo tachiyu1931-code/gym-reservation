@@ -1,16 +1,19 @@
+/** IndexedDB に一時保存するオフラインログのスキーマ */
 export interface OfflineLog {
-  id?: number;
-  student_id: string;
-  name: string;
-  department: string;
-  grade: string;
-  class_name: string;
-  checked_in_at: string; // ISO 8601 文字列
+  id?: number;           // ローカル自動連番（主キー）
+  student_id: string;   // 学籍番号
+  name: string;          // 氏名
+  department: string;    // 学科
+  grade: string;         // 学年
+  class_name: string;    // クラス名（例: A組）
+  is_staff: boolean;     // 教職員フラグ
+  checked_in_at: string; // チェックイン時刻 (ISO 8601)
+  action: 'checkin' | 'checkout'; // 操作種別
 }
 
 const DB_NAME = 'JimReserveOfflineStore';
 const STORE_NAME = 'offline_logs';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // class_name / action フィールド追加に伴いバージョンアップ
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -29,11 +32,13 @@ function openDB(): Promise<IDBDatabase> {
       resolve(request.result);
     };
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+      // v1 → v2: オブジェクトストアを再作成して新フィールドに対応
+      if (db.objectStoreNames.contains(STORE_NAME)) {
+        db.deleteObjectStore(STORE_NAME);
       }
+      db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
     };
   });
 }

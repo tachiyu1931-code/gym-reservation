@@ -5,16 +5,14 @@ import { isUseMock, mockLogs, mockCache } from '@/lib/mockDb';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { student_id, name, department, grade, class_name, checked_in_at } = body;
+    const { student_id, name, department, grade, class_name, is_staff, checked_in_at } = body;
 
     // バリデーション
-    if (!student_id || !name || !department || !grade || !class_name || !checked_in_at) {
+    if (!student_id || !name || !department || !grade || !class_name || typeof is_staff !== 'boolean' || !checked_in_at) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // デモ用のモックモード判定
     if (isUseMock()) {
-      // 1. 利用ログをメモリに追加
       const newId = mockLogs.length > 0 ? Math.max(...mockLogs.map(l => l.id)) + 1 : 1;
       mockLogs.unshift({
         id: newId,
@@ -23,11 +21,11 @@ export async function POST(request: Request) {
         department,
         grade,
         class_name,
+        is_staff,
         checked_in_at,
         created_at: new Date().toISOString()
       });
 
-      // 2. 学生キャッシュの UPSERT
       const cacheIndex = mockCache.findIndex(c => c.student_id === student_id);
       const cacheData = {
         student_id,
@@ -35,6 +33,7 @@ export async function POST(request: Request) {
         department,
         grade,
         class_name,
+        is_staff,
         created_at: cacheIndex >= 0 ? mockCache[cacheIndex].created_at : new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
@@ -48,19 +47,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true });
     }
 
-    // 1. 利用ログ (usage_logs) に登録
     const { error: logError } = await supabase.from('usage_logs').insert({
       student_id,
       name,
       department,
       grade,
       class_name,
+      is_staff,
       checked_in_at,
     });
 
     if (logError) throw logError;
 
-    // 2. 学生キャッシュ (users_cache) を UPSERT
     const { error: cacheError } = await supabase.from('users_cache').upsert(
       {
         student_id,
@@ -68,6 +66,7 @@ export async function POST(request: Request) {
         department,
         grade,
         class_name,
+        is_staff,
       },
       {
         onConflict: 'student_id',

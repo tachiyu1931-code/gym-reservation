@@ -9,132 +9,75 @@ import {
   AlertCircle,
   ArrowLeft,
   RefreshCw,
-  Globe // 言語切り替え用のアイコンを追加
+  Globe
 } from 'lucide-react';
 import { saveOfflineLog, getOfflineLogs, deleteOfflineLog } from '@/utils/db';
 import { DEPARTMENTS } from '@/constants/departments';
-import { cleanStudentId, cleanClassName, cleanName } from '@/utils/cleansing';
+import { cleanStudentId, cleanName } from '@/utils/cleansing';
+import type { SupportedLanguage, TranslationMessages } from '@/lib/translations';
 
-// ==========================================
-// 翻訳用の辞書データ（日・英）
-// ==========================================
-const TRANSLATIONS = {
-  ja: {
-    title: 'GYM RESERVE',
-    subtitle: 'ジム利用記録システム',
-    welcomeIn: '入室する方の学籍番号を入力してください',
-    welcomeOut: '退室する方の学籍番号を入力してください',
-    btnIn: '入室',
-    btnOut: '退室',
-    btnScan: '学生証をスキャンする',
-    or: 'または',
-    placeholderId: '学籍番号を入力',
-    helpText: '学籍番号を入力してEnterキーを押してください',
-    autoDetect: '※自動で入室・退室を判定します',
-    scanGuide: '枠内に学生証の学籍番号を写してください',
-    scanning: '画像を解析中...',
-    waitingScan: 'スキャンを待機しています...',
-    btnBack: '手動入力に戻る',
-    statusActive: '現在ジムを利用中です',
-    checkoutConfirm: 'チェックアウトしますか？',
-    btnCancel: 'キャンセル',
-    btnCheckout: 'チェックアウト',
-    labelStudentId: '学籍番号',
-    labelName: '氏名 (カタカナまたは漢字)',
-    placeholderName: '例: ヤマダ タロウ',
-    labelDept: '学科',
-    labelGrade: '学年',
-    labelClass: 'クラス名',
-    placeholderClass: '例: 2C, 2I',
-    selectDefault: '選択してください',
-    btnCheckin: 'チェックイン',
-    successCheckout: 'チェックアウト完了',
-    successCheckin: 'チェックイン完了',
-    msgCheckout: 'またのご利用をお待ちしています！',
-    msgCheckin: 'ご利用いただけます。いってらっしゃい！',
-    autoBack: '3秒後に自動で初期画面に戻ります...',
-    requiredError: 'すべての必須項目を入力してください。',
-    timeoutMsg: '一定時間操作がなかったため、初期画面に戻りました。',
-    checkoutErr: 'チェックアウトに失敗しました。もう一度お試しください。',
-    registerErr: '登録エラーが発生しました。インターネット接続およびブラウザの設定をご確認ください。',
-    offlineReg: 'オフライン登録',
-    offlineSave: 'オフライン保存',
-    detectLabel: '検出'
-  },
-  en: {
-    title: 'GYM RESERVE',
-    subtitle: 'Gym Check-in System',
-    welcomeIn: 'Please enter your Student ID to check in',
-    welcomeOut: 'Please enter your Student ID to check out',
-    btnIn: 'Check-in',
-    btnOut: 'Check-out',
-    btnScan: 'Scan Student ID',
-    or: 'OR',
-    placeholderId: 'Enter your ID',
-    helpText: 'Enter your ID and press the Enter key',
-    autoDetect: '*System will automatically detect Check-in/out',
-    scanGuide: 'Place your student ID card inside the frame',
-    scanning: 'Analyzing image...',
-    waitingScan: 'Waiting for scan...',
-    btnBack: 'Back to Manual Entry',
-    statusActive: 'You are currently inside the gym',
-    checkoutConfirm: 'Would you like to check out?',
-    btnCancel: 'Cancel',
-    btnCheckout: 'Check Out',
-    labelStudentId: 'Student ID',
-    labelName: 'Full Name',
-    placeholderName: 'e.g. John Doe',
-    labelDept: 'Department',
-    labelGrade: 'Grade',
-    labelClass: 'Class',
-    placeholderClass: 'e.g. 2C, 2I',
-    selectDefault: 'Please select',
-    btnCheckin: 'Check In',
-    successCheckout: 'Check Out Complete',
-    successCheckin: 'Check In Complete',
-    msgCheckout: 'Thank you! See you next time.',
-    msgCheckin: 'Registration successful! Have a good workout.',
-    autoBack: 'Returning to main screen in 3 seconds...',
-    requiredError: 'Please fill in all required fields.',
-    timeoutMsg: 'Returned to the main screen due to inactivity.',
-    checkoutErr: 'Check out failed. Please try again.',
-    registerErr: 'Registration error occurred. Please check your internet connection or browser settings.',
-    offlineReg: 'Offline Registered',
-    offlineSave: 'Offline Saved',
-    detectLabel: 'Detected'
-  }
-};
 
 const GRADES = ['1年', '2年', '3年', '4年', '教職員'];
 
 export default function GymCheckIn() {
-  // 1. 言語管理用のState（初期値は日本語 'ja'）
-  const [lang, setLang] = useState<'ja' | 'en'>('ja');
+  const [lang, setLang] = useState<SupportedLanguage>(() => {
+    if (typeof window === 'undefined') return 'ja';
 
-  // クライアント側で保存された言語設定を読み込む（画面遷移/リロード対策）
+    const savedLang = localStorage.getItem('gym_lang');
+    return savedLang === 'ja' || savedLang === 'en' ? savedLang : 'ja';
+  });
+  const [translations, setTranslations] = useState<TranslationMessages | null>(null);
+  const [translationError, setTranslationError] = useState('');
+
+
   useEffect(() => {
-    const savedLang = localStorage.getItem('gym_lang') as 'ja' | 'en';
-    if (savedLang && (savedLang === 'ja' || savedLang === 'en')) {
-      setLang(savedLang);
-    }
-  }, []);
+    const controller = new AbortController();
 
-  // 言語を切り替える関数
-  const handleLanguageChange = (selectedLang: 'ja' | 'en') => {
+    const loadTranslations = async () => {
+      setTranslationError('');
+
+      try {
+        const res = await fetch(`/api/translations?lang=${encodeURIComponent(lang)}`, {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) throw new Error('Failed to fetch translations');
+
+        const data = await res.json() as { messages: TranslationMessages };
+        setTranslations(data.messages);
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        console.error('Failed to load translations:', err);
+        setTranslationError('表示文言の取得に失敗しました。');
+      }
+    };
+
+    loadTranslations();
+
+    return () => controller.abort();
+  }, [lang]);
+
+  const handleLanguageChange = (selectedLang: SupportedLanguage) => {
     setLang(selectedLang);
     localStorage.setItem('gym_lang', selectedLang);
   };
 
-  // 選択中の翻訳オブジェクトをショートカット化
-  const t = TRANSLATIONS[lang];
+  const t = translations ?? (new Proxy({}, { get: () => '' }) as TranslationMessages);
 
-  const [screen, setScreen] = useState<'welcome' | 'scan' | 'form' | 'checkout-confirm' | 'success'>('welcome');
+  const [screen, setScreen] = useState<'welcome' | 'scan' | 'user-type' | 'form' | 'checkout-confirm' | 'success'>('welcome');
 
   const [studentId, setStudentId] = useState('');
+  const [userType, setUserType] = useState<'student' | 'staff' | null>(null);
   const [name, setName] = useState('');
   const [department, setDepartment] = useState('');
   const [grade, setGrade] = useState('');
   const [className, setClassName] = useState('');
+
+  // ⭐️ 動的学科・クラスマスタ管理用のState
+  const [dynamicDepartments, setDynamicDepartments] = useState<string[]>([]);
+  // classes は { grade: number; class_name: string }[] の形式
+  const [deptToClassesMap, setDeptToClassesMap] = useState<Record<string, { grade: number; class_name: string }[]>>({});
+  const [deptToYearsMap, setDeptToYearsMap] = useState<Record<string, number>>({});
 
   const [isOnline, setIsOnline] = useState(true);
   const [offlineCount, setOfflineCount] = useState(0);
@@ -147,11 +90,41 @@ export default function GymCheckIn() {
   const [successType, setSuccessType] = useState<'checkin' | 'checkout'>('checkin');
   const [welcomeMode, setWelcomeMode] = useState<'checkin' | 'checkout'>('checkin');
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // ホバー状態を管理するためのState
+  const [hoveredBtn, setHoveredBtn] = useState<'in' | 'out' | 'scan' | 'student' | 'staff' | null>(null);
+
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ⭐️ DBから学科マスターデータを動的に取得する処理
+  const loadDepartmentMaster = useCallback(async () => {
+    try {
+      const res = await fetch('/api/departments');
+      if (!res.ok) throw new Error('Failed to fetch departments');
+
+      const data = await res.json();
+
+      setDynamicDepartments(data.map((d: any) => d.name));
+
+      // classes: { grade: number; class_name: string }[]
+      const classMap: Record<string, { grade: number; class_name: string }[]> = {};
+      const yearsMap: Record<string, number> = {};
+      data.forEach((d: any) => {
+        classMap[d.name] = d.classes || [];
+        yearsMap[d.name] = d.years || 2;
+      });
+      setDeptToClassesMap(classMap);
+      setDeptToYearsMap(yearsMap);
+    } catch (err) {
+      console.error('Failed to load dynamic departments, using fallbacks:', err);
+      setDynamicDepartments([...DEPARTMENTS]);
+      setDeptToClassesMap({});
+      setDeptToYearsMap({});
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDepartmentMaster();
+  }, [loadDepartmentMaster]);
 
   const updateOnlineStatus = useCallback(async () => {
     const online = navigator.onLine;
@@ -182,7 +155,8 @@ export default function GymCheckIn() {
             department: log.department,
             grade: log.grade,
             class_name: log.class_name,
-            checked_in_at: log.checked_in_at
+            is_staff: log.is_staff,
+            checked_in_at: log.checked_in_at,
           })
         });
 
@@ -222,11 +196,17 @@ export default function GymCheckIn() {
     if (timeoutTimerRef.current) clearTimeout(timeoutTimerRef.current);
 
     if (screen === 'form' || screen === 'scan') {
+      // 手動入力・スキャン画面: 60秒無操作で待受画面に戻る
       timeoutTimerRef.current = setTimeout(() => {
         handleReset();
-        setErrorMessage(t.timeoutMsg); // 翻訳を適用
+        setErrorMessage(t.timeoutMsg);
         setTimeout(() => setErrorMessage(''), 5000);
       }, 60000);
+    } else if (screen === 'checkout-confirm') {
+      // チェックアウト確認画面: 10秒無操作で待受画面に戻る
+      timeoutTimerRef.current = setTimeout(() => {
+        handleReset();
+      }, 10000);
     }
   }, [screen, t.timeoutMsg]);
 
@@ -238,7 +218,6 @@ export default function GymCheckIn() {
   }, [screen, studentId, name, department, grade, className, resetTimeoutTimer]);
 
   const handleReset = () => {
-    stopCamera();
     setScreen('welcome');
     setStudentId('');
     setName('');
@@ -250,6 +229,33 @@ export default function GymCheckIn() {
     setCheckoutLog(null);
     setSuccessType('checkin');
     setWelcomeMode('checkin');
+    setUserType(null);
+    setHoveredBtn(null);
+  };
+
+  useEffect(() => {
+  if (screen !== 'success') return;
+
+  const timer = window.setTimeout(() => {
+    handleReset();
+  }, 3000);
+
+  return () => window.clearTimeout(timer);
+}, [screen]);
+
+  // 学科を選んだ時点で、その学科の修業年限に応じて学年の選択肢を絞り込み、
+  // クラスが1つだけ特定できる場合は自動入力する
+  const handleDepartmentChange = (deptValue: string) => {
+    setDepartment(deptValue);
+
+    // 学年が、新しい学科の修業年限を超えている場合はリセット
+    const yearsCount = deptToYearsMap[deptValue] ?? 4;
+    const availableGrades = GRADES.slice(0, yearsCount);
+    if (grade && !availableGrades.includes(grade)) {
+      setGrade('');
+    }
+    // 学科が変わったらクラスもリセット
+    setClassName('');
   };
 
   const lookupCache = async (id: string) => {
@@ -279,6 +285,13 @@ export default function GymCheckIn() {
           setDepartment(result.data.department || '');
           setGrade(result.data.grade || '');
           setClassName(result.data.class_name || '');
+          if (result.data.is_staff) {
+            setUserType('staff');
+            setGrade('教職員');
+            setClassName('教職員');
+          } else {
+            setUserType('student');
+          }
         }
       }
       setScreen('form');
@@ -289,6 +302,12 @@ export default function GymCheckIn() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleModeSelect = (mode: 'checkin' | 'checkout') => {
+    setWelcomeMode(mode);
+    setSuccessType(mode);
+    setScreen('user-type');
   };
 
   const handleCheckOut = async () => {
@@ -315,50 +334,71 @@ export default function GymCheckIn() {
         throw new Error(errData.error || 'Checkout failed');
       }
     } catch (err: any) {
-      setErrorMessage(t.checkoutErr); // 翻訳を適用
+      setErrorMessage(t.checkoutErr);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCheckIn = async (e: React.FormEvent) => {
+  const handleCheckInOrOut = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage('');
+
+    if (welcomeMode === 'checkout' && checkoutLog) {
+      handleCheckOut();
+      return;
+    }
+
+    // 教職員の場合は、学年とクラスを自動補完してバリデーションを通す
+    let finalGrade = grade;
+    let finalClassName = className;
+    if (userType === 'staff') {
+      finalGrade = '教職員';
+      finalClassName = '教職員';
+    }
+
+    if (!studentId.trim() || !name.trim() || !department || !finalGrade || !finalClassName) {
+      setErrorMessage(t.requiredError);
+      return;
+    }
+
     const cleanId = cleanStudentId(studentId);
     const cleanN = cleanName(name);
-    const cleanClass = cleanClassName(className);
 
-    if (!cleanId || !cleanN || !department || !grade || !cleanClass) {
-      setErrorMessage(t.requiredError); // 翻訳を適用
+    if (!cleanId || !cleanN) {
+      setErrorMessage(t.requiredError);
       return;
     }
 
     setStudentId(cleanId);
     setName(cleanN);
-    setClassName(cleanClass);
 
     setLoading(true);
-    setErrorMessage('');
-    const checkInTime = new Date().toISOString();
+    const logTime = new Date().toISOString();
 
     const logData = {
       student_id: cleanId,
       name: cleanN,
       department: department,
-      grade: grade,
-      class_name: cleanClass,
-      checked_in_at: checkInTime
+      grade: finalGrade,
+      class_name: finalClassName,
+      is_staff: userType === 'staff',
+      checked_in_at: logTime,
+      action: 'checkin' as const,
     };
+
+    const apiPath = '/api/checkin';
 
     try {
       if (isOnline) {
-        const res = await fetch('/api/checkin', {
+        const res = await fetch(apiPath, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(logData)
         });
 
         if (res.ok) {
-          setScannedName(name);
+          setScannedName(cleanN);
           setScreen('success');
         } else {
           const errData = await res.json();
@@ -367,133 +407,68 @@ export default function GymCheckIn() {
       } else {
         await saveOfflineLog(logData);
         setOfflineCount(prev => prev + 1);
-        setScannedName(`${name} (${t.offlineReg})`); // 翻訳を適用
+        setScannedName(`${cleanN} (${t.offlineReg})`);
         setScreen('success');
       }
     } catch (err: any) {
-      console.error('Check-in failed:', err);
+      console.error('Registration failed:', err);
       try {
         await saveOfflineLog(logData);
         setOfflineCount(prev => prev + 1);
-        setScannedName(`${name} (${t.offlineSave})`); // 翻訳を適用
+        setScannedName(`${cleanN} (${t.offlineSave})`);
         setScreen('success');
       } catch (dbErr) {
-        setErrorMessage(t.registerErr); // 翻訳を適用
+        setErrorMessage(t.registerErr);
       }
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (screen === 'success') {
-      const timer = setTimeout(() => {
-        handleReset();
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [screen]);
-
-  const startCamera = async () => {
+  // ラズパイ(/api/scan)に撮影・OCRを依頼し、結果を既存のlookupCache処理に渡す。
+  // カメラ自体はラズパイ側にあるため、ノートPC側でgetUserMediaは使用しない。
+  const handleScanStudentId = async () => {
     setScreen('scan');
     setErrorMessage('');
-    setOcrLoading(false);
+    setOcrResult('');
+    setOcrLoading(true);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      startAutoScan();
-    } catch (err) {
-      console.error('Camera access failed:', err);
-      setErrorMessage('カメラの起動に失敗しました。カメラのアクセス許可を確認してください。');
-      setScreen('welcome');
-    }
-  };
+      //画面側からscanの依頼
+      const res = await fetch('/api/scan', { method: 'POST' });
+      const data = await res.json();
 
-  const stopCamera = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-  };
-
-  const startAutoScan = () => {
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-
-    scanIntervalRef.current = setInterval(async () => {
-      if (!videoRef.current || !canvasRef.current || ocrLoading) return;
-
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-      if (!context) return;
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      try {
-        setOcrLoading(true);
-        const { createWorker } = await import('tesseract.js');
-        const worker = await createWorker('eng');
-
-        await worker.setParameters({
-          tessedit_char_whitelist: '0123456789',
-        });
-
-        const cropX = canvas.width * 0.1;
-        const cropY = canvas.height * 0.25;
-        const cropW = canvas.width * 0.8;
-        const cropH = canvas.height * 0.5;
-
-        const croppedCanvas = document.createElement('canvas');
-        croppedCanvas.width = cropW;
-        croppedCanvas.height = cropH;
-        const croppedCtx = croppedCanvas.getContext('2d');
-        if (croppedCtx) {
-          croppedCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-          const dataUrl = croppedCanvas.toDataURL('image/jpeg');
-
-          const { data: { text } } = await worker.recognize(dataUrl);
-          await worker.terminate();
-
-          const match = text.replace(/\s/g, '').match(/\d{7}/);
-          if (match) {
-            const foundId = match[0];
-            console.log('Detected Student ID:', foundId);
-            setOcrResult(`${t.detectLabel}: ${foundId}`); // 翻訳を適用
-
-            stopCamera();
-            setStudentId(foundId);
-            await lookupCache(foundId);
-          }
-        }
-      } catch (ocrErr) {
-        console.error('OCR processing error:', ocrErr);
-      } finally {
+      if (!data.success || !data.studentId) {
+        setErrorMessage(data.error || '学籍番号を読み取れませんでした。もう一度お試しください。');
         setOcrLoading(false);
+        return; // scan画面に留まり、再試行ボタンで再スキャンできるようにする
       }
-    }, 500);
+
+      setOcrResult(`${t.detectLabel}: ${data.studentId}`);
+      setStudentId(data.studentId);
+      setOcrLoading(false);
+      await lookupCache(data.studentId);
+    } catch (err) {
+      console.error('Raspi scan request failed:', err);
+      setErrorMessage('ラズパイへの接続に失敗しました。WiFi接続状況を確認してください。');
+      setOcrLoading(false);
+    }
   };
 
-  useEffect(() => {
-    return () => {
-      stopCamera();
-    };
-  }, []);
+  // トップ画面ボタンのベースとなる共通スタイル
+  const baseBtnStyle = {
+    fontSize: '1.4rem',
+    padding: '24px',
+    borderRadius: '16px',
+    border: '1px solid var(--card-border)',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    outline: 'none',
+  };
 
   return (
     <div className="app-container" onClick={resetTimeoutTimer}>
-      {/* 言語切り替えトグル（ヘッダーの右上に追加） */}
+      {/* 言語切り替えトグル */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 20px', gap: '8px', alignItems: 'center' }}>
         <Globe size={16} style={{ color: 'var(--text-muted)' }} />
         <button
@@ -519,105 +494,163 @@ export default function GymCheckIn() {
       </div>
 
       {/* エラーメッセージ */}
-      {errorMessage && (
+      {(translationError || errorMessage) && (
         <div className="alert-box">
           <AlertCircle size={20} />
-          <span>{errorMessage}</span>
+          <span>{translationError || errorMessage}</span>
         </div>
       )}
 
-      {/* 待受（Welcome）画面 */}
+      {/* 1. 受付トップ画面 */}
       {screen === 'welcome' && (
-        <div className="section">
-          <div className="form-group" style={{ textAlign: 'center', marginBottom: '40px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
+        <div className="section" style={{ minHeight: '40vh', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '360px', margin: '0 auto' }}>
 
-              {/* 入室／退室切り替えボタン */}
-              <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '320px' }}>
-                <button
-                  className={`btn ${welcomeMode === 'checkin' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ flex: 1 }}
-                  onClick={() => setWelcomeMode('checkin')}
-                >
-                  {t.btnIn}
-                </button>
-                <button
-                  className={`btn ${welcomeMode === 'checkout' ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ flex: 1 }}
-                  onClick={() => setWelcomeMode('checkout')}
-                >
-                  {t.btnOut}
-                </button>
-              </div>
+            {/* 入室ボタン：通常時は背景をなじませ、ホバー時だけ緑色に */}
+            <button
+              style={{
+                ...baseBtnStyle,
+                backgroundColor: hoveredBtn === 'in' ? '#10b981' : '#2d3748',
+                color: '#ffffff',
+                border: hoveredBtn === 'in' ? '1px solid #10b981' : '1px solid var(--card-border)',
+              }}
+              onMouseEnter={() => setHoveredBtn('in')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={() => handleModeSelect('checkin')}
+            >
+              {t.btnIn}
+            </button>
 
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 500, color: 'var(--text-muted)', margin: '4px 0 12px' }}>
-                {welcomeMode === 'checkin' ? t.welcomeIn : t.welcomeOut}
-              </h2>
+            {/* 退室ボタン：通常時は背景をなじませ、ホバー時だけ別の色（オレンジ系）に */}
+            <button
+              style={{
+                ...baseBtnStyle,
+                backgroundColor: hoveredBtn === 'out' ? '#e82c22ff' : '#2d3748',
+                color: '#ffffff',
+                border: hoveredBtn === 'out' ? '1px solid #e82222ff' : '1px solid var(--card-border)',
+              }}
+              onMouseEnter={() => setHoveredBtn('out')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={() => handleModeSelect('checkout')}
+            >
+              {t.btnOut}
+            </button>
 
-              <button className="btn btn-primary" style={{ width: '100%', maxWidth: '320px' }} onClick={startCamera}>
-                <Camera size={22} />
-                {t.btnScan}
-              </button>
+            {/* 学生証スキャンボタン：通常時は背景をなじませ、ホバー時だけ深い緑に */}
+            <button
+              style={{
+                ...baseBtnStyle,
+                fontSize: '1.2rem',
+                padding: '20px',
+                marginTop: '10px',
+                backgroundColor: hoveredBtn === 'scan' ? '#6db2b2' : '#2d3748',
+                color: '#ffffff',
+                border: hoveredBtn === 'scan' ? '1px solid #6db2b2' : '1px solid var(--card-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+              onMouseEnter={() => setHoveredBtn('scan')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={handleScanStudentId}
+            >
+              <Camera size={24} />
+              {t.btnScan}
+            </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', width: '100%', maxWidth: '320px', margin: '4px 0' }}>
-                <hr style={{ flexGrow: 1, border: 'none', borderTop: '1px solid var(--card-border)' }} />
-                <span style={{ padding: '0 10px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>{t.or}</span>
-                <hr style={{ flexGrow: 1, border: 'none', borderTop: '1px solid var(--card-border)' }} />
-              </div>
-
-              <div style={{ width: '100%', maxWidth: '320px', position: 'relative' }}>
-                <input
-                  type="text"
-                  className="input-text"
-                  placeholder={t.placeholderId}
-                  value={studentId}
-                  onChange={(e) => setStudentId(cleanStudentId(e.target.value))}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && studentId.length >= 4) {
-                      lookupCache(studentId);
-                    }
-                  }}
-                  style={{ paddingRight: '50px', textAlign: 'center' }}
-                />
-                <button
-                  onClick={() => studentId.length >= 4 && lookupCache(studentId)}
-                  disabled={studentId.length < 4 || loading}
-                  style={{
-                    position: 'absolute',
-                    right: '8px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'transparent',
-                    border: 'none',
-                    color: studentId.length >= 4 ? 'var(--primary)' : 'var(--text-muted)',
-                    cursor: studentId.length >= 4 ? 'pointer' : 'not-allowed',
-                    padding: '8px'
-                  }}
-                >
-                  {loading ? <Loader2 className="spinner" size={20} /> : <Keyboard size={20} />}
-                </button>
-              </div>
-              <p className="help-text">{t.helpText}</p>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '-8px' }}>
-                {t.autoDetect}
-              </p>
-            </div>
           </div>
         </div>
       )}
 
-      {/* カメラスキャン（Scan）画面 */}
-      {screen === 'scan' && (
-        <div className="section">
-          <div className="camera-wrapper">
-            <video ref={videoRef} className="camera-video" autoPlay playsInline muted />
-            <div className="scan-overlay">
-              <div className="scan-laser"></div>
-              <div className="scan-target-box"></div>
-            </div>
+
+      {screen === 'user-type' && (
+        <div className="section" style={{ minHeight: '40vh', justifyContent: 'center' }}>
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
+              {t.selectType}
+            </h2>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+              {t.selectTypeSub}
+            </p>
           </div>
 
-          <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', maxWidth: '360px', margin: '0 auto' }}>
+
+            {/* 学生ボタン */}
+            <button
+              style={{
+                ...baseBtnStyle,
+                backgroundColor: hoveredBtn === 'student' ? 'var(--primary)' : '#2d3748',
+                color: '#ffffff',
+                border: hoveredBtn === 'student' ? '1px solid var(--primary)' : '1px solid var(--card-border)',
+              }}
+              onMouseEnter={() => setHoveredBtn('student')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={() => {
+                setUserType('student');
+                setScreen('form');
+              }}
+            >
+              {t.student}
+            </button>
+
+            {/* 教職員ボタン */}
+            <button
+              style={{
+                ...baseBtnStyle,
+                backgroundColor: hoveredBtn === 'staff' ? '#8b5cf6' : '#2d3748', // ホバー時はパープル
+                color: '#ffffff',
+                border: hoveredBtn === 'staff' ? '1px solid #8b5cf6' : '1px solid var(--card-border)',
+              }}
+              onMouseEnter={() => setHoveredBtn('staff')}
+              onMouseLeave={() => setHoveredBtn(null)}
+              onClick={() => {
+                setUserType('staff');
+                setGrade('教職員');
+                setClassName('教職員');
+                setScreen('form');
+              }}
+            >
+              {t.staff}
+            </button>
+
+            {/* 戻るボタン */}
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: '10px', padding: '12px' }}
+              onClick={handleReset}
+            >
+              <ArrowLeft size={18} />
+              {t.btnBack}
+            </button>
+
+          </div>
+        </div>
+      )}
+
+      {/* スキャン画面（ラズパイにOCRを依頼している間の待機/結果表示） */}
+      {screen === 'scan' && (
+        <div className="section" style={{ justifyContent: 'center', minHeight: '40vh' }}>
+          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+            <div
+              style={{
+                width: '100px',
+                height: '100px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--card-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 24px',
+              }}
+            >
+              {ocrLoading ? (
+                <Loader2 className="spinner" size={48} />
+              ) : (
+                <Camera size={48} />
+              )}
+            </div>
             <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>
               {t.scanGuide}
             </p>
@@ -626,13 +659,23 @@ export default function GymCheckIn() {
             </p>
           </div>
 
-          <div className="btn-group">
+          <div className="btn-group" style={{ maxWidth: '360px', margin: '0 auto', width: '100%' }}>
+            {errorMessage && (
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                onClick={handleScanStudentId}
+                disabled={ocrLoading}
+              >
+                <RefreshCw size={18} />
+                {t.btnRetry}
+              </button>
+            )}
             <button className="btn btn-secondary" style={{ flexGrow: 1 }} onClick={handleReset}>
               <ArrowLeft size={18} />
               {t.btnBack}
             </button>
           </div>
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
         </div>
       )}
 
@@ -660,19 +703,55 @@ export default function GymCheckIn() {
         </div>
       )}
 
-      {/* 手動入力フォーム（Form）画面 */}
+      {/* 2. 手続きフォーム画面 */}
       {screen === 'form' && (
         <div className="section" style={{ justifyContent: 'flex-start' }}>
-          <form onSubmit={handleCheckIn} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
+              {welcomeMode === 'checkin' ? t.btnIn : t.btnOut}({userType === 'student' ? t.student : t.staff})
+            </h2>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+              {welcomeMode === 'checkin' ? t.welcomeIn : t.welcomeOut}
+            </p>
+          </div>
+
+          <form onSubmit={handleCheckInOrOut} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+
             <div className="form-group">
               <label className="label">{t.labelStudentId}</label>
-              <input
-                type="text"
-                className="input-text"
-                value={studentId}
-                onChange={(e) => setStudentId(cleanStudentId(e.target.value))}
-                required
-              />
+              <div style={{ position: 'relative', width: '100%' }}>
+                <input
+                  type="text"
+                  className="input-text"
+                  placeholder={t.placeholderId}
+                  value={studentId}
+                  onChange={(e) => setStudentId(cleanStudentId(e.target.value))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && studentId.length >= 4) {
+                      lookupCache(studentId);
+                    }
+                  }}
+                  style={{ paddingRight: '50px' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => studentId.length >= 4 && lookupCache(studentId)}
+                  disabled={studentId.length < 4 || loading}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'transparent',
+                    border: 'none',
+                    color: studentId.length >= 4 ? 'var(--primary)' : 'var(--text-muted)',
+                    cursor: studentId.length >= 4 ? 'pointer' : 'not-allowed',
+                    padding: '8px'
+                  }}
+                >
+                  {loading ? <Loader2 className="spinner" size={20} /> : <Keyboard size={20} />}
+                </button>
+              </div>
             </div>
 
             <div className="form-group">
@@ -684,60 +763,83 @@ export default function GymCheckIn() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onBlur={(e) => setName(cleanName(e.target.value))}
-                required
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '16px', width: '100%', maxWidth: '480px' }}>
-              <div className="form-group" style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '480px', flexWrap: 'wrap' }}>
+
+              {/* 🔄 学科/所属の選択（動的マスタを参照） */}
+              <div className="form-group" style={{ flex: '2 1 200px' }}>
                 <label className="label">{t.labelDept}</label>
                 <select
                   className="select-box"
                   value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  required
+                  onChange={(e) => handleDepartmentChange(e.target.value)}
                 >
                   <option value="">{t.selectDefault}</option>
-                  {DEPARTMENTS.map((dept, index) => (
+                  {dynamicDepartments.map((dept, index) => (
                     <option key={index} value={dept}>{dept}</option>
                   ))}
                 </select>
               </div>
 
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="label">{t.labelGrade}</label>
-                <select
-                  className="select-box"
-                  value={grade}
-                  onChange={(e) => setGrade(e.target.value)}
-                  required
-                >
-                  <option value="">{t.selectDefault}</option>
-                  {GRADES.map((g, index) => (
-                    <option key={index} value={g}>{g}</option>
-                  ))}
-                </select>
-              </div>
+              {/* 学生の場合のみ、学年とクラスの入力欄を動的に表示 */}
+              {userType === 'student' && (
+                <>
+                  {/* 学年プルダウン: 選択した学科の修業年限で絞り込み */}
+                  <div className="form-group" style={{ flex: '1 1 140px' }}>
+                    <label className="label">{t.labelGrade}</label>
+                    <select
+                      className="select-box"
+                      value={grade}
+                      onChange={(e) => { setGrade(e.target.value); setClassName(''); }}
+                      disabled={!department}
+                    >
+                      <option value="">{t.selectDefault}</option>
+                      {GRADES.filter(g => g !== '教職員')
+                        .slice(0, department ? (deptToYearsMap[department] ?? 4) : 4)
+                        .map((g, index) => (
+                          <option key={index} value={g}>{g}</option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* 🔄 クラスプルダウン: 選択した学年のクラスのみ表示 */}
+                  <div className="form-group" style={{ flex: '1 1 120px' }}>
+                    <label className="label">{t.labelClass}</label>
+                    <select
+                      className="select-box"
+                      value={className}
+                      onChange={(e) => setClassName(e.target.value)}
+                      disabled={!department || !grade} // 学科・学年が選ばれるまで選択不可
+                    >
+                      <option value="">{t.selectDefault}</option>
+                      {(() => {
+                        // 選択した学科 + 学年に対応するクラス一覧を取得
+                        const gradeNum = parseInt(grade?.charAt(0) || '0', 10);
+                        const allClasses = deptToClassesMap[department] || [];
+                        const filtered = allClasses.filter(c => c.grade === gradeNum);
+                        return filtered.length > 0
+                          ? filtered.map(c => (
+                              <option key={`${c.grade}-${c.class_name}`} value={c.class_name}>
+                                {c.class_name}
+                              </option>
+                            ))
+                          : <option value="" disabled>クラス未登録</option>;
+                      })()}
+                    </select>
+                  </div>
+                </>
+              )}
+
             </div>
 
-            <div className="form-group">
-              <label className="label">{t.labelClass}</label>
-              <input
-                type="text"
-                className="input-text"
-                placeholder={t.placeholderClass}
-                value={className}
-                onChange={(e) => setClassName(cleanClassName(e.target.value))}
-                required
-              />
-            </div>
-
-            <div className="btn-group">
+            <div className="btn-group" style={{ marginTop: '24px' }}>
               <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={handleReset} disabled={loading}>
                 {t.btnCancel}
               </button>
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>
-                {loading ? <Loader2 className="spinner" size={20} /> : t.btnCheckin}
+                {loading ? <Loader2 className="spinner" size={20} /> : (welcomeMode === 'checkin' ? t.btnCheckin : t.btnCheckout)}
               </button>
             </div>
           </form>
