@@ -9,16 +9,18 @@ import {
   AlertCircle,
   ArrowLeft,
   RefreshCw,
-  Globe
+  Globe,
+  Trophy,
+  BarChart3
 } from 'lucide-react';
 import { saveOfflineLog, getOfflineLogs, deleteOfflineLog } from '@/utils/db';
 import { DEPARTMENTS } from '@/constants/departments';
 import { cleanStudentId, cleanName } from '@/utils/cleansing';
 import { detectUserType } from '@/utils/detectUserType';
 import { DEFAULT_LANGUAGE, TRANSLATIONS, type SupportedLanguage, type TranslationMessages } from '@/lib/translations';
+import { ScannerOverlay } from '@/components/ScannerOverlay';
 
-
-const GRADES = ['1年', '2年', '3年', '4年', '教職員'];
+const GRADES = ['1年', '2年', '3年', '4年', '教�E員'];
 const STAFF_LABEL = '教職員';
 
 const GRADE_LABEL_KEYS: Record<string, keyof Pick<TranslationMessages, 'grade1' | 'grade2' | 'grade3' | 'grade4'>> = {
@@ -41,7 +43,30 @@ function formatDisplayName(displayName: string, suffix: string) {
   return suffix ? displayName + ' ' + suffix : displayName;
 }
 
-type Screen = 'welcome' | 'scan' | 'form' | 'checkin-confirm' | 'checkout-confirm' | 'success';
+type Screen = 'welcome' | 'scan' | 'form' | 'checkin-confirm' | 'checkout-confirm' | 'success' | 'rankings';
+
+type UsageStatsLike = {
+  total_usage_minutes: number;
+  monthly_usage_minutes: number;
+  consecutive_days: number;
+  last_used_date: string | null;
+};
+
+type RankingEntry = {
+  rank: number;
+  user_code_suffix: string;
+  name: string;
+  department: string;
+  grade: string;
+  class_name: string;
+  monthly_usage_minutes: number;
+  consecutive_days: number;
+};
+
+type RankingResponse = {
+  monthly: RankingEntry[];
+  streaks: RankingEntry[];
+};
 
 type UsageLogLike = {
   id: number;
@@ -52,6 +77,7 @@ type UsageLogLike = {
   class_name: string;
   is_staff?: boolean;
   checked_in_at: string;
+  usage_duration_minutes?: number | null;
 };
 
 export default function GymCheckIn() {
@@ -109,9 +135,8 @@ export default function GymCheckIn() {
   const [grade, setGrade] = useState('');
   const [className, setClassName] = useState('');
 
-  //  動的学科・クラスマスタ管理用のState
+  //  動的学科のクラスマスタ管理
   const [dynamicDepartments, setDynamicDepartments] = useState<string[]>([]);
-  // classes は { grade: number; class_name: string }[] の形式
   const [deptToClassesMap, setDeptToClassesMap] = useState<Record<string, { grade: number; class_name: string }[]>>({});
   const [deptToYearsMap, setDeptToYearsMap] = useState<Record<string, number>>({});
 
@@ -125,11 +150,18 @@ export default function GymCheckIn() {
   const [checkoutLog, setCheckoutLog] = useState<UsageLogLike | null>(null);
   const [checkoutNotice, setCheckoutNotice] = useState('');
   const [successType, setSuccessType] = useState<'checkin' | 'checkout'>('checkin');
+  const [successStats, setSuccessStats] = useState<UsageStatsLike | null>(null);
+  const [successDuration, setSuccessDuration] = useState<number | null>(null);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [rankings, setRankings] = useState<RankingResponse | null>(null);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+
+  const encouragements = [t.msgCheckin, t.welcomeMessage, t.autoDetect];
+  const checkoutMessages = [t.msgCheckout, t.checkoutConfirm, t.btnBack];
 
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recentInputRef = useRef<{ id: string; at: number } | null>(null);
 
-  // ⭐️ DBから学科マスターデータを動的に取得する処理
   const loadDepartmentMaster = useCallback(async () => {
     try {
       const res = await fetch('/api/departments');
@@ -180,18 +212,22 @@ export default function GymCheckIn() {
     console.log(`Syncing ${logs.length} offline logs to Supabase...`);
     for (const log of logs) {
       try {
-        const res = await fetch('/api/checkin', {
+        const endpoint = log.action === 'check_out' ? '/api/checkout' : '/api/checkin';
+        const body = log.action === 'check_out'
+          ? { log_id: log.log_id, checked_out_at: log.checked_out_at }
+          : {
+              student_id: log.student_id,
+              name: log.name,
+              department: log.department,
+              grade: log.grade,
+              class_name: log.class_name,
+              is_staff: log.is_staff,
+              checked_in_at: log.checked_in_at,
+            };
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            student_id: log.student_id,
-            name: log.name,
-            department: log.department,
-            grade: log.grade,
-            class_name: log.class_name,
-            is_staff: log.is_staff,
-            checked_in_at: log.checked_in_at,
-          })
+          body: JSON.stringify(body)
         });
 
         if (res.ok) {
@@ -230,14 +266,12 @@ export default function GymCheckIn() {
     if (timeoutTimerRef.current) clearTimeout(timeoutTimerRef.current);
 
     if (screen === 'form' || screen === 'scan' || screen === 'checkin-confirm') {
-      // 手動入力・スキャン画面: 60秒無操作で待受画面に戻る
       timeoutTimerRef.current = setTimeout(() => {
         handleReset();
         setErrorMessage(t.timeoutMsg);
         setTimeout(() => setErrorMessage(''), 5000);
       }, 60000);
     } else if (screen === 'checkout-confirm') {
-      // チェックアウト確認画面: 10秒無操作で待受画面に戻る
       timeoutTimerRef.current = setTimeout(() => {
         handleReset();
       }, 10000);
@@ -263,6 +297,9 @@ export default function GymCheckIn() {
     setCheckoutLog(null);
     setCheckoutNotice('');
     setSuccessType('checkin');
+    setSuccessStats(null);
+    setSuccessDuration(null);
+    setSuccessMessage('');
     setUserType(null);
   };
 
@@ -276,12 +313,10 @@ export default function GymCheckIn() {
   return () => window.clearTimeout(timer);
 }, [screen]);
 
-  // 学科を選んだ時点で、その学科の修業年限に応じて学年の選択肢を絞り込み、
-  // クラスが1つだけ特定できる場合は自動入力する
-  const handleDepartmentChange = (deptValue: string) => {
+    const handleDepartmentChange = (deptValue: string) => {
     setDepartment(deptValue);
 
-    // 学年が、新しい学科の修業年限を超えている場合はリセット
+    // 学年が、新しい学科、修業年限を超えていた場合セルフリサーチ
     const yearsCount = deptToYearsMap[deptValue] ?? 4;
     const availableGrades = GRADES.slice(0, yearsCount);
     if (grade && !availableGrades.includes(grade)) {
@@ -377,6 +412,25 @@ export default function GymCheckIn() {
 
     try {
       const checkedOutAt = new Date();
+      const fallbackMinutes = Math.max(1, Math.round((checkedOutAt.getTime() - new Date(targetLog.checked_in_at).getTime()) / 60000));
+
+      if (!isOnline) {
+        await saveOfflineLog({
+          action: 'check_out',
+          student_id: targetLog.student_id,
+          log_id: targetLog.id,
+          checked_out_at: checkedOutAt.toISOString(),
+        });
+        setOfflineCount(prev => prev + 1);
+        setScannedName(targetLog.name || name);
+        setSuccessDuration(fallbackMinutes);
+        setSuccessStats(null);
+        setSuccessMessage(checkoutMessages[Math.floor(Math.random() * checkoutMessages.length)]);
+        setSuccessType('checkout');
+        setScreen('success');
+        return;
+      }
+
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -391,12 +445,17 @@ export default function GymCheckIn() {
         throw new Error(errData.error || 'Checkout failed');
       }
 
+      const result = await res.json() as { usage_duration_minutes?: number; stats?: UsageStatsLike };
+
       const checkedInAt = new Date(targetLog.checked_in_at);
       if (!isSameLocalDate(checkedInAt, checkedOutAt)) {
         setCheckoutNotice(formatMessage(t.checkoutNotice, { date: formatMonthDay(targetLog.checked_in_at) }));
       }
 
       setScannedName(targetLog.name || name);
+      setSuccessDuration(result.usage_duration_minutes ?? fallbackMinutes);
+      setSuccessStats(result.stats ?? null);
+      setSuccessMessage(checkoutMessages[Math.floor(Math.random() * checkoutMessages.length)]);
       setSuccessType('checkout');
       setScreen('success');
     } catch (err) {
@@ -417,7 +476,7 @@ export default function GymCheckIn() {
       setErrorMessage(t.requiredError);
       return;
     }
-    // 教職員の場合は、学年とクラスを自動補完してバリデーションを通す
+    // 教職員の場合、学年とクラスを自動補完してバリデーションを通す
     let finalDepartment = department;
     let finalGrade = grade;
     let finalClassName = className;
@@ -455,7 +514,7 @@ export default function GymCheckIn() {
       class_name: finalClassName,
       is_staff: detectedType === 'staff',
       checked_in_at: logTime,
-      action: 'checkin' as const,
+      action: 'check_in' as const,
     };
 
     const apiPath = '/api/checkin';
@@ -470,6 +529,10 @@ export default function GymCheckIn() {
 
         if (res.ok) {
           setScannedName(cleanN);
+          setSuccessStats(null);
+          setSuccessDuration(null);
+          setSuccessMessage(encouragements[Math.floor(Math.random() * encouragements.length)]);
+          setSuccessType('checkin');
           setScreen('success');
         } else {
           const errData = await res.json();
@@ -479,6 +542,10 @@ export default function GymCheckIn() {
         await saveOfflineLog(logData);
         setOfflineCount(prev => prev + 1);
         setScannedName(`${cleanN} (${t.offlineReg})`);
+        setSuccessStats(null);
+        setSuccessDuration(null);
+        setSuccessMessage(encouragements[Math.floor(Math.random() * encouragements.length)]);
+        setSuccessType('checkin');
         setScreen('success');
       }
     } catch (err: any) {
@@ -487,6 +554,10 @@ export default function GymCheckIn() {
         await saveOfflineLog(logData);
         setOfflineCount(prev => prev + 1);
         setScannedName(`${cleanN} (${t.offlineSave})`);
+        setSuccessStats(null);
+        setSuccessDuration(null);
+        setSuccessMessage(encouragements[Math.floor(Math.random() * encouragements.length)]);
+        setSuccessType('checkin');
         setScreen('success');
       } catch (dbErr) {
         setErrorMessage(t.registerErr);
@@ -518,34 +589,28 @@ export default function GymCheckIn() {
       setClassName('');
     }
   };
-  // ラズパイ(/api/scan)に撮影・OCRを依頼し、結果を既存のlookupCache処理に渡す。
-  // カメラ自体はラズパイ側にあるため、ノートPC側でgetUserMediaは使用しない。
+    const loadRankings = async () => {
+    setRankingsLoading(true);
+    setErrorMessage('');
+
+    try {
+      const res = await fetch('/api/rankings');
+      if (!res.ok) throw new Error('Failed to fetch rankings');
+      const data = await res.json() as RankingResponse;
+      setRankings(data);
+      setScreen('rankings');
+    } catch (err) {
+      console.error('Failed to load rankings:', err);
+      setErrorMessage(t.registerErr);
+    } finally {
+      setRankingsLoading(false);
+    }
+  };
+
   const handleScanStudentId = async () => {
     setScreen('scan');
     setErrorMessage('');
     setOcrResult('');
-    setOcrLoading(true);
-
-    try {
-      //画面側からscanの依頼
-      const res = await fetch('/api/scan', { method: 'POST' });
-      const data = await res.json();
-
-      if (!data.success || !data.studentId) {
-        setErrorMessage(t.scanReadErr);
-        setOcrLoading(false);
-        return; // scan画面に留まり、再試行ボタンで再スキャンできるようにする
-      }
-
-      setOcrResult(`${t.detectLabel}: ${data.studentId}`);
-      setStudentId(data.studentId);
-      setOcrLoading(false);
-      await lookupUserStatus(data.studentId);
-    } catch (err) {
-      console.error('Raspi scan request failed:', err);
-      setErrorMessage(t.raspiConnectionErr);
-      setOcrLoading(false);
-    }
   };
 
   return (
@@ -558,8 +623,7 @@ export default function GymCheckIn() {
           style={{ padding: '4px 12px', fontSize: '0.85rem', minHeight: 'auto', width: 'auto' }}
           onClick={() => handleLanguageChange('ja')}
         >
-          日本語
-        </button>
+          日本語</button>
         <button
           className={`btn ${lang === 'en' ? 'btn-primary' : 'btn-secondary'}`}
           style={{ padding: '4px 12px', fontSize: '0.85rem', minHeight: 'auto', width: 'auto' }}
@@ -583,7 +647,7 @@ export default function GymCheckIn() {
         </div>
       )}
 
-      {/* 1. 受付トップ画面 */}
+      {/* 1. 受付画面 */}
       {screen === 'welcome' && (
         <div className="section" style={{ minHeight: '40vh', justifyContent: 'center' }}>
           <p style={{ letterSpacing: '0.18em', color: 'var(--text-muted)', marginBottom: 28 }}>
@@ -632,68 +696,79 @@ export default function GymCheckIn() {
               <div style={{ flex: 1, height: 1, background: 'var(--card-border)' }} />
             </div>
 
-            <button
-              className="btn btn-primary"
-              style={{ width: '100%', justifyContent: 'center' }}
-              onClick={handleScanStudentId}
-              disabled={loading}
-            >
-              <Camera size={24} />
-              {t.btnScan}
-            </button>
-          </div>
-        </div>
-      )}
-      {screen === 'scan' && (
-        <div className="section" style={{ justifyContent: 'center', minHeight: '40vh' }}>
-          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-            <div
-              style={{
-                width: '100px',
-                height: '100px',
-                borderRadius: '50%',
-                backgroundColor: 'var(--card-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 24px',
-              }}
-            >
-              {ocrLoading ? (
-                <Loader2 className="spinner" size={48} />
-              ) : (
-                <Camera size={48} />
-              )}
-            </div>
-            <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>
-              {t.scanGuide}
-            </p>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '6px', minHeight: '20px' }}>
-              {ocrLoading ? t.scanning : ocrResult || t.waitingScan}
-            </p>
-          </div>
-
-          <div className="btn-group" style={{ maxWidth: '360px', margin: '0 auto', width: '100%' }}>
-            {errorMessage && (
+            <div className="btn-group" style={{ maxWidth: '520px' }}>
               <button
                 className="btn btn-primary"
                 style={{ flex: 1 }}
                 onClick={handleScanStudentId}
-                disabled={ocrLoading}
+                disabled={loading}
               >
-                <RefreshCw size={18} />
-                {t.btnRetry}
+                <Camera size={24} />
+                {t.btnScan}
               </button>
-            )}
-            <button className="btn btn-secondary" style={{ flexGrow: 1 }} onClick={handleReset}>
-              <ArrowLeft size={18} />
-              {t.btnBack}
-            </button>
+              <button
+                className="btn btn-secondary"
+                style={{ flex: 1 }}
+                onClick={loadRankings}
+                disabled={rankingsLoading}
+              >
+                {rankingsLoading ? <Loader2 className="spinner" size={20} /> : <BarChart3 size={22} />}
+                {t.btnRankings}
+              </button>
+            </div>
           </div>
         </div>
       )}
+      {screen === 'scan' && (
+       <ScannerOverlay
+          lang={lang}
+          t={t}
+          onScanSuccess={async (scannedId) => {
+            setStudentId(scannedId);
+            await lookupUserStatus(scannedId);
+          }}
+          onClose={handleReset}
+        />
+      )}
 
       {/* チェックイン確認画面(登録済み・未在室のユーザー向け) */}
+      {screen === 'rankings' && (
+        <div className="section" style={{ justifyContent: 'flex-start' }}>
+          <h2 style={{ fontSize: '1.5rem', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Trophy size={24} />
+            {t.rankingsTitle}
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, width: '100%' }}>
+            {[{ title: t.monthlyRanking, rows: rankings?.monthly ?? [], unit: 'minutes' }, { title: t.streakRanking, rows: rankings?.streaks ?? [], unit: 'days' }].map((section) => (
+              <div key={section.title} style={{ border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, background: 'rgba(15, 23, 42, 0.35)' }}>
+                <h3 style={{ fontSize: '1rem', marginBottom: 12 }}>{section.title}</h3>
+                {section.rows.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)' }}>{t.noRankingData}</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {section.rows.map((row) => (
+                      <div key={section.title + row.rank + row.user_code_suffix} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>#{row.rank}</span>
+                        <span style={{ flex: 1 }}>{row.name}</span>
+                        <strong>
+                          {section.unit === 'minutes'
+                            ? formatMessage(t.minutesUnit, { minutes: row.monthly_usage_minutes })
+                            : formatMessage(t.daysUnit, { days: row.consecutive_days })}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <button className="btn btn-secondary" style={{ marginTop: 24 }} onClick={handleReset}>
+            <ArrowLeft size={18} />
+            {t.btnBack}
+          </button>
+        </div>
+      )}
+
       {screen === 'checkin-confirm' && (
         <div className="section" style={{ textAlign: 'center' }}>
           <h2 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '8px' }}>
@@ -852,7 +927,7 @@ export default function GymCheckIn() {
         </div>
       )}
 
-      {/* 完了（Success）画面 */}
+      {/* 画面 */}
       {screen === 'success' && (
         <div className="section">
           <div className="success-icon-wrapper">
@@ -865,8 +940,23 @@ export default function GymCheckIn() {
           </h2>
           <p className="success-name">{formatDisplayName(scannedName, t.personSuffix)}</p>
           <p style={{ color: 'var(--text-muted)' }}>
-            {successType === 'checkout' ? t.msgCheckout : t.msgCheckin}
+            {successMessage || (successType === 'checkout' ? t.msgCheckout : t.msgCheckin)}
           </p>
+          {successType === 'checkin' && successStats && (
+            <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>
+              {formatMessage(t.monthlyUsageSummary, { minutes: successStats.monthly_usage_minutes })}
+            </p>
+          )}
+          {successType === 'checkout' && successDuration !== null && (
+            <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>
+              {formatMessage(t.usageDuration, { minutes: successDuration })}
+            </p>
+          )}
+          {successType === 'checkout' && successStats && (
+            <p style={{ color: 'var(--primary)', marginTop: 8, fontWeight: 700 }}>
+              {formatMessage(t.streakSummary, { days: successStats.consecutive_days })}
+            </p>
+          )}
           {checkoutNotice && (
             <p style={{ marginTop: 12, color: '#ffb86b', fontWeight: 600 }}>
               {checkoutNotice}

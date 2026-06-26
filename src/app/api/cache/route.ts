@@ -1,43 +1,33 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { isUseMock, mockCache } from '@/lib/mockDb';
 
-/**
- * GET /api/cache?student_id=XXXXX
- * 学籍番号でキャッシュを検索する。論理削除済みレコードは除外。
- */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const studentId = searchParams.get('student_id');
+  const studentId = (searchParams.get('student_id') ?? searchParams.get('user_code') ?? '').trim().toUpperCase();
 
   if (!studentId) {
     return NextResponse.json({ error: 'student_id is required' }, { status: 400 });
   }
 
-  // デモ用のモックモード
   if (isUseMock()) {
     const cached = mockCache.find(
       (c) => c.student_id === studentId && !c.deleted_at
     );
-    if (cached) {
-      return NextResponse.json({ found: true, data: cached });
-    }
+    if (cached) return NextResponse.json({ found: true, data: cached });
     return NextResponse.json({ found: false });
   }
 
   try {
     const { data, error } = await supabase
       .from('users_cache')
-      .select('name, department, grade, class_name, is_staff')
+      .select('name, department, grade, class_name, is_staff, user_type, total_usage_minutes, monthly_usage_minutes, consecutive_days, last_used_date')
       .eq('student_id', studentId)
-      .is('deleted_at', null)   // 論理削除済みを除外
+      .is('deleted_at', null)
       .single();
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        // レコードが見つからない場合（正常系）
-        return NextResponse.json({ found: false });
-      }
+      if (error.code === 'PGRST116') return NextResponse.json({ found: false });
       throw error;
     }
 

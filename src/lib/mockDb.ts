@@ -1,4 +1,4 @@
-// ==========================================
+﻿// ==========================================
 // モックDB型定義
 // ==========================================
 
@@ -14,6 +14,8 @@ export interface UsageLog {
   checked_in_at: string;
   checked_out_at?: string | null;
   auto_checked_out: boolean;
+  usage_duration_minutes?: number | null;
+  admin_confirmed?: boolean;
   created_at: string;
   deleted_at?: string | null;
 }
@@ -26,6 +28,10 @@ export interface UserCache {
   class_name: string;
   is_staff: boolean;
   user_type: 'student' | 'staff';
+  total_usage_minutes: number;
+  monthly_usage_minutes: number;
+  consecutive_days: number;
+  last_used_date?: string | null;
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -53,6 +59,8 @@ if (!globalForMock.mockLogs) {
       checked_in_at: new Date(Date.now() - 3600000 * 2).toISOString(),
       checked_out_at: new Date(Date.now() - 3600000).toISOString(),
       auto_checked_out: false,
+      usage_duration_minutes: 60,
+      admin_confirmed: false,
       created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
       deleted_at: null,
     },
@@ -68,6 +76,8 @@ if (!globalForMock.mockLogs) {
       checked_in_at: new Date(Date.now() - 1800000).toISOString(),
       checked_out_at: null,
       auto_checked_out: false,
+      usage_duration_minutes: null,
+      admin_confirmed: false,
       created_at: new Date(Date.now() - 1800000).toISOString(),
       deleted_at: null,
     },
@@ -83,6 +93,8 @@ if (!globalForMock.mockLogs) {
       checked_in_at: new Date(Date.now() - 600000).toISOString(),
       checked_out_at: null,
       auto_checked_out: false,
+      usage_duration_minutes: null,
+      admin_confirmed: false,
       created_at: new Date(Date.now() - 600000).toISOString(),
       deleted_at: null,
     },
@@ -99,6 +111,10 @@ if (!globalForMock.mockCache) {
       class_name: 'A組',
       is_staff: false,
       user_type: 'student',
+      total_usage_minutes: 420,
+      monthly_usage_minutes: 180,
+      consecutive_days: 3,
+      last_used_date: new Date().toISOString().slice(0, 10),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       deleted_at: null,
@@ -111,6 +127,10 @@ if (!globalForMock.mockCache) {
       class_name: 'A組',
       is_staff: false,
       user_type: 'student',
+      total_usage_minutes: 240,
+      monthly_usage_minutes: 120,
+      consecutive_days: 2,
+      last_used_date: new Date().toISOString().slice(0, 10),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       deleted_at: null,
@@ -123,6 +143,10 @@ if (!globalForMock.mockCache) {
       class_name: 'B組',
       is_staff: false,
       user_type: 'student',
+      total_usage_minutes: 90,
+      monthly_usage_minutes: 90,
+      consecutive_days: 1,
+      last_used_date: new Date().toISOString().slice(0, 10),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       deleted_at: null,

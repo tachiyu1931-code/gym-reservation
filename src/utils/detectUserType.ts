@@ -1,13 +1,15 @@
-export type DetectedUserType = 'student' | 'staff' | 'unknown';
+﻿export type DetectedUserType = 'student' | 'staff' | 'unknown';
 
 export function detectUserType(id: string): DetectedUserType {
   const normalizedId = id.trim().toUpperCase();
 
-  if (/^\d{7}$/.test(normalizedId)) {
+  if (!normalizedId) return 'unknown';
+
+  if (/^\d+$/.test(normalizedId)) {
     return 'student';
   }
 
-  if (/^T\d+$/.test(normalizedId)) {
+  if (/[A-Z]/.test(normalizedId)) {
     return 'staff';
   }
 

@@ -50,6 +50,7 @@ interface UsageLog {
   checked_in_at: string;
   checked_out_at: string | null;
   created_at: string;
+  deleted_at?: string | null;
 }
 
 // 学生キャッシュの型
@@ -63,6 +64,7 @@ interface UserCache {
   checked_out_at: string | null;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 export default function AdminDashboard() {
@@ -131,7 +133,7 @@ export default function AdminDashboard() {
 
   // ログをゴミ箱へ移動（論理削除）
   const handleDeleteLog = async (id: number) => {
-    if (!window.confirm('この利用記録をゴミ筱に移動しますか？\n30日以内は復元可能です。')) return;
+    if (!window.confirm('この利用記録をゴミ箱に移動しますか？\n30日以内は復元可能です。')) return;
 
     setActionLoading(true);
     try {
@@ -148,7 +150,7 @@ export default function AdminDashboard() {
 
   // キャッシュをゴミ箱へ移動（論理削除）
   const handleDeleteCache = async (studentId: string) => {
-    if (!window.confirm(`学籍番号 ${studentId} のキャッシュデータをゴミ筱に移動しますか？\n30日以内は復元可能です。`)) return;
+    if (!window.confirm(`学籍番号 ${studentId} のキャッシュデータをゴミ箱に移動しますか？\n30日以内は復元可能です。`)) return;
 
     setActionLoading(true);
     try {
@@ -162,7 +164,67 @@ export default function AdminDashboard() {
       setActionLoading(false);
     }
   };
+  const handleRestoreLog = async (id: number) => {
+    setActionLoading(true);
+    try {
+      await restoreUsageLog(id);
+      const [updatedLogs, updatedDeleted] = await Promise.all([
+        getUsageLogs() as Promise<UsageLog[]>,
+        getDeletedUsageLogs() as Promise<UsageLog[]>,
+      ]);
+      setLogs(updatedLogs);
+      setDeletedLogs(updatedDeleted);
+    } catch (err) {
+      alert('復元に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
+  const handlePermanentDeleteLog = async (id: number) => {
+    if (!window.confirm('この利用記録を完全に削除します。元に戻せません。実行しますか？')) return;
+
+    setActionLoading(true);
+    try {
+      await permanentDeleteUsageLog(id);
+      setDeletedLogs(prev => prev.filter(log => log.id !== id));
+    } catch (err) {
+      alert('完全削除に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRestoreCache = async (studentId: string) => {
+    setActionLoading(true);
+    try {
+      await restoreStudentCache(studentId);
+      const [updatedCaches, updatedDeleted] = await Promise.all([
+        getUsersCache() as Promise<UserCache[]>,
+        getDeletedStudentCaches() as Promise<UserCache[]>,
+      ]);
+      setCaches(updatedCaches);
+      setDeletedCaches(updatedDeleted);
+    } catch (err) {
+      alert('復元に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePermanentDeleteCache = async (studentId: string) => {
+    if (!window.confirm(`番号 ${studentId} のキャッシュデータを完全に削除します。元に戻せません。実行しますか？`)) return;
+
+    setActionLoading(true);
+    try {
+      await permanentDeleteStudentCache(studentId);
+      setDeletedCaches(prev => prev.filter(cache => cache.student_id !== studentId));
+    } catch (err) {
+      alert('完全削除に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   // キャッシュ更新処理
   const [editClassName, setEditClassName] = useState('');
@@ -416,6 +478,18 @@ export default function AdminDashboard() {
         >
           <BarChart3 size={16} />
           利用統計
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'trash' ? 'active' : ''}`}
+          onClick={() => { setActiveTab('trash'); setSearchQuery(''); setFilterDept(''); setFilterDate(''); }}
+        >
+          <Trash2 size={16} />
+          ゴミ箱
+          {(deletedLogs.length + deletedCaches.length) > 0 && (
+            <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>
+              ({deletedLogs.length + deletedCaches.length})
+            </span>
+          )}
         </button>
       </div>
 
@@ -688,6 +762,140 @@ export default function AdminDashboard() {
             )}
           </div>
         </>
+      )}
+      {/* タブ: ゴミ箱 */}
+      {activeTab === 'trash' && !loading && (
+        <div className="section" style={{ justifyContent: 'flex-start', alignItems: 'stretch', gap: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ fontSize: '1.3rem', fontWeight: 700 }}>ゴミ箱</h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
+                論理削除されたデータを復元、または完全削除できます。完全削除は元に戻せません。
+              </p>
+            </div>
+            <button className="btn btn-secondary" onClick={loadData} disabled={loading || actionLoading}>
+              <RefreshCw size={16} className={loading ? 'spinner' : ''} />
+              再読込
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+            <div className="stat-card">
+              <div className="stat-icon"><History size={24} /></div>
+              <div className="stat-info">
+                <span className="stat-value">{deletedLogs.length} 件</span>
+                <span className="stat-label">削除済み利用ログ</span>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon"><Users size={24} /></div>
+              <div className="stat-info">
+                <span className="stat-value">{deletedCaches.length} 件</span>
+                <span className="stat-label">削除済み利用者キャッシュ</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '1.05rem', marginBottom: '12px' }}>利用ログ</h3>
+            <div className="table-wrapper">
+              {deletedLogs.length === 0 ? (
+                <div className="empty-state">
+                  <History size={48} className="empty-state-icon" />
+                  <p>削除済みの利用ログはありません</p>
+                </div>
+              ) : (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>削除日時</th>
+                      <th>入室時刻</th>
+                      <th>退室時刻</th>
+                      <th>番号</th>
+                      <th>氏名</th>
+                      <th>クラス</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deletedLogs.map(log => (
+                      <tr key={log.id}>
+                        <td style={{ color: 'var(--text-muted)' }}>{log.deleted_at ? new Date(log.deleted_at).toLocaleString('ja-JP') : '-'}</td>
+                        <td>{new Date(log.checked_in_at).toLocaleString('ja-JP')}</td>
+                        <td>{log.checked_out_at ? new Date(log.checked_out_at).toLocaleString('ja-JP') : '-'}</td>
+                        <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{log.student_id}</td>
+                        <td>{log.name}</td>
+                        <td>{log.class_name || '-'}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button className="btn-sm btn-edit-sm" onClick={() => handleRestoreLog(log.id)} disabled={actionLoading}>
+                              <RefreshCw size={14} />
+                              復元
+                            </button>
+                            <button className="btn-sm btn-danger-sm" onClick={() => handlePermanentDeleteLog(log.id)} disabled={actionLoading}>
+                              <Trash2 size={14} />
+                              完全削除
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h3 style={{ fontSize: '1.05rem', marginBottom: '12px' }}>利用者キャッシュ</h3>
+            <div className="table-wrapper">
+              {deletedCaches.length === 0 ? (
+                <div className="empty-state">
+                  <Users size={48} className="empty-state-icon" />
+                  <p>削除済みの利用者キャッシュはありません</p>
+                </div>
+              ) : (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>削除日時</th>
+                      <th>番号</th>
+                      <th>氏名</th>
+                      <th>学科</th>
+                      <th>学年</th>
+                      <th>クラス</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deletedCaches.map(cache => (
+                      <tr key={cache.student_id}>
+                        <td style={{ color: 'var(--text-muted)' }}>{cache.deleted_at ? new Date(cache.deleted_at).toLocaleString('ja-JP') : '-'}</td>
+                        <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{cache.student_id}</td>
+                        <td>{cache.name}</td>
+                        <td>{cache.department}</td>
+                        <td>{cache.grade}</td>
+                        <td>{cache.class_name || '-'}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button className="btn-sm btn-edit-sm" onClick={() => handleRestoreCache(cache.student_id)} disabled={actionLoading}>
+                              <RefreshCw size={14} />
+                              復元
+                            </button>
+                            <button className="btn-sm btn-danger-sm" onClick={() => handlePermanentDeleteCache(cache.student_id)} disabled={actionLoading}>
+                              <Trash2 size={14} />
+                              完全削除
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
       )}
       {/* タブ3: 利用統計 */}
       {activeTab === 'stats' && !loading && (

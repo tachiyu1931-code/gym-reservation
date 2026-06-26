@@ -226,3 +226,35 @@ BEGIN
       AND deleted_at < NOW() - INTERVAL '30 days';
 END;
 $$ LANGUAGE plpgsql;
+
+-- ==========================================
+-- 8. v3 確定仕様: 自己学習キャッシュ・ランキング統計カラム
+--    既存実装互換のため student_id/user_type は維持し、v3 の user_code/role 相当として扱う
+-- ==========================================
+ALTER TABLE users_cache ADD COLUMN IF NOT EXISTS total_usage_minutes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users_cache ADD COLUMN IF NOT EXISTS monthly_usage_minutes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users_cache ADD COLUMN IF NOT EXISTS consecutive_days INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users_cache ADD COLUMN IF NOT EXISTS last_used_date DATE;
+ALTER TABLE users_cache ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ DEFAULT NOW();
+
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS usage_duration_minutes INTEGER;
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS admin_confirmed BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_users_cache_monthly_usage
+    ON users_cache(monthly_usage_minutes DESC)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_users_cache_consecutive_days
+    ON users_cache(consecutive_days DESC)
+    WHERE deleted_at IS NULL;
+
+-- 月初リセット用。Vercel Cron / Supabase Scheduled Function などから呼び出す。
+CREATE OR REPLACE FUNCTION reset_monthly_usage_minutes()
+RETURNS VOID AS $$
+BEGIN
+    UPDATE users_cache
+    SET monthly_usage_minutes = 0,
+        updated_at = NOW()
+    WHERE deleted_at IS NULL;
+END;
+$$ LANGUAGE plpgsql;

@@ -1,109 +1,149 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { isUseMock, mockLogs } from '@/lib/mockDb';
+import { addUsageStats, calculateUsageMinutes } from '@/lib/usageStats';
 
-const AUTO_CHECKOUT_HOURS = 15; // 自動チェックアウトの基準時間（15時間）
+const AUTO_CHECKOUT_HOURS = 15;
 
-// GET: 学籍番号で「在室中（checked_out_at IS NULL）」の最新ログを取得
-export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
-    const student_id = searchParams.get('student_id');
-
-    if (!student_id) {
-        return NextResponse.json({ error: 'student_id is required' }, { status: 400 });
+async function runAutoCheckout() {
+  if (isUseMock()) {
+    const now = Date.now();
+    for (const log of mockLogs) {
+      if (!log.checked_out_at && (now - new Date(log.checked_in_at).getTime()) > AUTO_CHECKOUT_HOURS * 3600000) {
+        const checkedOutAt = new Date(new Date(log.checked_in_at).getTime() + AUTO_CHECKOUT_HOURS * 3600000).toISOString();
+        const minutes = calculateUsageMinutes(log.checked_in_at, checkedOutAt);
+        log.checked_out_at = checkedOutAt;
+        log.auto_checked_out = true;
+        log.usage_duration_minutes = minutes;
+        log.admin_confirmed = false;
+        addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
+      }
     }
-    if (isUseMock()) {
+    return;
+  }
 
-        // モック環境の自動チェックアウト
-        const now = Date.now();
-        mockLogs.forEach(l => {
-            if (!l.checked_out_at && (now - new Date(l.checked_in_at).getTime()) > AUTO_CHECKOUT_HOURS * 3600000) {
-                // 退室時間を「入室時間 + 15時間」に設定
-                l.checked_out_at = new Date(new Date(l.checked_in_at).getTime() + AUTO_CHECKOUT_HOURS * 3600000).toISOString();
-            }
-        });
-    } else {
-        // Supabaseの自動チェックアウト
-        try {
-            // 15時間前の基準時刻を計算
-            const autoCheckoutTime = new Date(Date.now() - AUTO_CHECKOUT_HOURS * 3600000).toISOString();
+  const autoCheckoutTime = new Date(Date.now() - AUTO_CHECKOUT_HOURS * 3600000).toISOString();
+  const { data: oldLogs, error: selectError } = await supabase
+    .from('usage_logs')
+    .select('id, student_id, checked_in_at')
+    .is('checked_out_at', null)
+    .is('deleted_at', null)
+    .lt('checked_in_at', autoCheckoutTime);
 
-            // 15時間以上経過した未退室レコードを一括更新
-            await supabase.rpc('auto_checkout_old_logs', {
-                auto_checkout_time_threshold: autoCheckoutTime
-            });
-        } catch (err: any) {
-            console.error('Auto-checkout background error:', err);
-            //自動チェックアウトの失敗時はログ出力のみにして処理を続行
-        }
+  if (selectError) throw selectError;
+
+  for (const log of oldLogs ?? []) {
+    const checkedOutAt = new Date(new Date(log.checked_in_at).getTime() + AUTO_CHECKOUT_HOURS * 3600000).toISOString();
+    const minutes = calculateUsageMinutes(log.checked_in_at, checkedOutAt);
+    const { error: updateError } = await supabase
+      .from('usage_logs')
+      .update({
+        checked_out_at: checkedOutAt,
+        usage_duration_minutes: minutes,
+        auto_checked_out: true,
+        admin_confirmed: false,
+      })
+      .eq('id', log.id)
+      .is('checked_out_at', null);
+
+    if (!updateError) {
+      await addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
     }
-
-    //データ取得
-    if (isUseMock()) {
-        const activeLog = mockLogs.find(
-            l => l.student_id === student_id && !l.checked_out_at
-        );
-        return NextResponse.json({ found: !!activeLog, log: activeLog || null });
-    }
-
-    try {
-        const { data, error } = await supabase
-            .from('usage_logs')
-            .select('*')
-            .eq('student_id', student_id)
-            .is('checked_out_at', null)
-            .is('deleted_at', null)   // 論理削除済みを除外
-            .order('checked_in_at', { ascending: false })
-            .limit(1)
-            .single();
-
-        if (error && error.code !== 'PGRST116') { // PGRST116 = 0件は正常
-            return NextResponse.json({ error: error.message }, { status: 500 });
-        }
-
-        return NextResponse.json({ found: !!data, log: data || null });
-    } catch (error: any) {
-        console.error('Database error in /api/checkout:', error);
-        return NextResponse.json(
-            { error: 'Internal Server Error', details: error.message },
-            { status: 500 }
-        );
-    }
+  }
 }
 
-// POST: checked_out_at を更新
-export async function POST(request: Request) {
-    try {
-        const { log_id, checked_out_at } = await request.json();
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const student_id = (searchParams.get('student_id') ?? searchParams.get('user_code') ?? '').trim().toUpperCase();
 
-        if (!log_id || !checked_out_at) {
-            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-        }
+  if (!student_id) {
+    return NextResponse.json({ error: 'student_id is required' }, { status: 400 });
+  }
 
-        if (isUseMock()) {
-            const index = mockLogs.findIndex(l => l.id === log_id);
-            if (index === -1) {
-                return NextResponse.json({ error: 'Log not found' }, { status: 404 });
-            }
-            mockLogs[index].checked_out_at = checked_out_at;
-            return NextResponse.json({ success: true });
-        }
+  try {
+    await runAutoCheckout();
+  } catch (err) {
+    console.error('Auto-checkout background error:', err);
+  }
 
-        const { error } = await supabase
-            .from('usage_logs')
-            .update({ checked_out_at })
-            .eq('id', log_id)
-            .is('checked_out_at', null)  // 二重チェックアウト防止
-            .is('deleted_at', null);     // 論理削除済みは対象外
+  if (isUseMock()) {
+    const activeLog = mockLogs.find(
+      l => l.student_id === student_id && !l.checked_out_at && !l.deleted_at
+    );
+    return NextResponse.json({ found: !!activeLog, log: activeLog || null });
+  }
 
-        if (error) throw error;
+  try {
+    const { data, error } = await supabase
+      .from('usage_logs')
+      .select('*')
+      .eq('student_id', student_id)
+      .is('checked_out_at', null)
+      .is('deleted_at', null)
+      .order('checked_in_at', { ascending: false })
+      .limit(1)
+      .single();
 
-        return NextResponse.json({ success: true });
-    } catch (error: any) {
-        console.error('Database error in /api/checkout:', error);
-        return NextResponse.json(
-            { error: 'Internal Server Error', details: error.message },
-            { status: 500 }
-        );
+    if (error && error.code !== 'PGRST116') {
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    return NextResponse.json({ found: !!data, log: data || null });
+  } catch (error: unknown) {
+    console.error('Database error in /api/checkout:', error);
+    return NextResponse.json(
+      { error: 'Internal Server Error', details: (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const { log_id, checked_out_at } = await request.json() as { log_id?: number; checked_out_at?: string };
+
+    if (!log_id || !checked_out_at) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    if (isUseMock()) {
+      const index = mockLogs.findIndex(l => l.id === log_id);
+      if (index === -1) return NextResponse.json({ error: 'Log not found' }, { status: 404 });
+
+      const minutes = calculateUsageMinutes(mockLogs[index].checked_in_at, checked_out_at);
+      mockLogs[index].checked_out_at = checked_out_at;
+      mockLogs[index].usage_duration_minutes = minutes;
+      const stats = await addUsageStats(mockLogs[index].student_id, minutes, new Date(checked_out_at));
+      return NextResponse.json({ success: true, usage_duration_minutes: minutes, stats });
+    }
+
+    const { data: targetLog, error: selectError } = await supabase
+      .from('usage_logs')
+      .select('id, student_id, checked_in_at')
+      .eq('id', log_id)
+      .is('checked_out_at', null)
+      .is('deleted_at', null)
+      .single();
+
+    if (selectError) throw selectError;
+
+    const minutes = calculateUsageMinutes(targetLog.checked_in_at, checked_out_at);
+    const { error } = await supabase
+      .from('usage_logs')
+      .update({ checked_out_at, usage_duration_minutes: minutes })
+      .eq('id', log_id)
+      .is('checked_out_at', null)
+      .is('deleted_at', null);
+
+    if (error) throw error;
+
+    const stats = await addUsageStats(targetLog.student_id, minutes, new Date(checked_out_at));
+    return NextResponse.json({ success: true, usage_duration_minutes: minutes, stats });
+  } catch (error: unknown) {
+    console.error('Database error in /api/checkout:', error);
+    return NextResponse.json(
+      { error: 'Internal Server Error', details: (error as Error).message },
+      { status: 500 }
+    );
+  }
 }

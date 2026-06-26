@@ -101,3 +101,6 @@ export async function checkConnection(): Promise<boolean> {
     return false;
   }
 }
+
+// ラズパイの映像ストリーム用URLの組み立て
+export const RASPI_VIDEO_URL = `http://${RASPI_HOST}:${RASPI_PORT}/scan`; 
