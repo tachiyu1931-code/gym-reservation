@@ -10,8 +10,10 @@ export interface UsageLog {
   grade: string;
   class_name: string;
   is_staff: boolean;
+  user_type: 'student' | 'staff';
   checked_in_at: string;
   checked_out_at?: string | null;
+  auto_checked_out: boolean;
   created_at: string;
   deleted_at?: string | null;
 }
@@ -23,6 +25,7 @@ export interface UserCache {
   grade: string;
   class_name: string;
   is_staff: boolean;
+  user_type: 'student' | 'staff';
   created_at: string;
   updated_at: string;
   deleted_at?: string | null;
@@ -46,8 +49,10 @@ if (!globalForMock.mockLogs) {
       grade: '2年',
       class_name: 'A組',
       is_staff: false,
+      user_type: 'student',
       checked_in_at: new Date(Date.now() - 3600000 * 2).toISOString(),
       checked_out_at: new Date(Date.now() - 3600000).toISOString(),
+      auto_checked_out: false,
       created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
       deleted_at: null,
     },
@@ -59,8 +64,10 @@ if (!globalForMock.mockLogs) {
       grade: '1年',
       class_name: 'A組',
       is_staff: false,
+      user_type: 'student',
       checked_in_at: new Date(Date.now() - 1800000).toISOString(),
       checked_out_at: null,
+      auto_checked_out: false,
       created_at: new Date(Date.now() - 1800000).toISOString(),
       deleted_at: null,
     },
@@ -72,8 +79,10 @@ if (!globalForMock.mockLogs) {
       grade: '1年',
       class_name: 'B組',
       is_staff: false,
+      user_type: 'student',
       checked_in_at: new Date(Date.now() - 600000).toISOString(),
       checked_out_at: null,
+      auto_checked_out: false,
       created_at: new Date(Date.now() - 600000).toISOString(),
       deleted_at: null,
     },
@@ -89,6 +98,7 @@ if (!globalForMock.mockCache) {
       grade: '2年',
       class_name: 'A組',
       is_staff: false,
+      user_type: 'student',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       deleted_at: null,
@@ -100,6 +110,7 @@ if (!globalForMock.mockCache) {
       grade: '1年',
       class_name: 'A組',
       is_staff: false,
+      user_type: 'student',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       deleted_at: null,
@@ -111,6 +122,7 @@ if (!globalForMock.mockCache) {
       grade: '1年',
       class_name: 'B組',
       is_staff: false,
+      user_type: 'student',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       deleted_at: null,

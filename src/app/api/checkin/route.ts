@@ -6,6 +6,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { student_id, name, department, grade, class_name, is_staff, checked_in_at } = body;
+    const user_type: 'student' | 'staff' = is_staff ? 'staff' : 'student';
 
     // バリデーション
     if (!student_id || !name || !department || !grade || !class_name || typeof is_staff !== 'boolean' || !checked_in_at) {
@@ -22,8 +23,11 @@ export async function POST(request: Request) {
         grade,
         class_name,
         is_staff,
+        user_type,
         checked_in_at,
-        created_at: new Date().toISOString()
+        auto_checked_out: false,
+        created_at: new Date().toISOString(),
+        deleted_at: null
       });
 
       const cacheIndex = mockCache.findIndex(c => c.student_id === student_id);
@@ -34,8 +38,10 @@ export async function POST(request: Request) {
         grade,
         class_name,
         is_staff,
+        user_type,
         created_at: cacheIndex >= 0 ? mockCache[cacheIndex].created_at : new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        deleted_at: null
       };
 
       if (cacheIndex >= 0) {
@@ -54,6 +60,7 @@ export async function POST(request: Request) {
       grade,
       class_name,
       is_staff,
+      user_type,
       checked_in_at,
     });
 
@@ -67,6 +74,7 @@ export async function POST(request: Request) {
         grade,
         class_name,
         is_staff,
+        user_type,
       },
       {
         onConflict: 'student_id',
