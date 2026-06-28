@@ -1,117 +1,214 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Loader2,
+  ArrowLeft,
+  RefreshCw,
+  Camera,
+  CheckCircle2,
+  XCircle,
+  WifiOff,
+} from 'lucide-react';
 import { ScanResult } from '@/lib/scanStudentId';
 import { type SupportedLanguage, type TranslationMessages } from '@/lib/translations';
-
+import styles from './ScannerOverlay.module.css';
 
 interface ScannerOverlayProps {
   lang: SupportedLanguage;
-  t: TranslationMessages; // 親から翻訳メチE��ージを受け取めE
+  t: TranslationMessages;
   onScanSuccess: (studentId: string) => void;
   onClose: () => void;
 }
 
-export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverlayProps) {
-  const [statusText, setStatusText] = useState<string>(t.scanning || '学籍番号を読み取ってぁE��す…');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+const RASPI_HOST = '192.168.3.248';
+const RASPI_PORT = '5000';
 
-  // ラズパイの映像エンドポイント
-  const RASPI_HOST = '192.168.3.248';
-  const RASPI_PORT = '5000';
-  const videoStreamUrl = `http://${RASPI_HOST}:${RASPI_PORT}/scan`;
+// ocr_server.py の CROP_BOX と一致させる
+// ここは ocr_server.py の CAMERA_SIZE (main解像度) を基準にした実ピクセル値
+// CROP_BOX を変更したら、ここも同じ値に更新する
+const CAMERA_SIZE = { width: 4608, height: 2592 };
+const CROP_BOX = { x: 2400, y: 3, w: 1200, h: 300 }; // 切り取って実際に読み取る部分
+
+// 実ピクセルをパーセンテージに変換。映像の表示サイズが変わっても追従できるようにする
+const cropPercent = {
+  left: (CROP_BOX.x / CAMERA_SIZE.width) * 100,
+  top: (CROP_BOX.y / CAMERA_SIZE.height) * 100,
+  width: (CROP_BOX.w / CAMERA_SIZE.width) * 100,
+  height: (CROP_BOX.h / CAMERA_SIZE.height) * 100,
+};
+
+type ScanPhase = 'live' | 'capturing' | 'success' | 'error';
+
+export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverlayProps) {
+  const [phase, setPhase] = useState<ScanPhase>('live');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const [streamOk, setStreamOk] = useState(true);
+  const [streamKey, setStreamKey] = useState(0);
+
+  const isProcessingRef = useRef(false);
+  const autoRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const videoStreamUrl = `http://${RASPI_HOST}:${RASPI_PORT}/stream?ts=${streamKey}`;
 
   const startScanning = useCallback(async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    setPhase('capturing');
     setErrorMessage('');
+    setAttempt((n) => n + 1);
 
     try {
-      // Next.jsのAPIルートを叩く。OCR実行
       const res = await fetch('/api/scan', { method: 'POST' });
       const data: ScanResult = await res.json();
 
       if (data.success && data.studentId) {
-        setStatusText(lang === 'ja' ? '読み取り成功！' : 'Scan Successful!');
-        onScanSuccess(data.studentId);
-      } else {
-        setErrorMessage(t.scanReadErr);
-        setIsProcessing(false);
+        setPhase('success');
+        setTimeout(() => onScanSuccess(data.studentId as string), 400);
+        return;
       }
-    } catch (err) {
-      setErrorMessage(t.raspiConnectionErr);
-      setIsProcessing(false);
-    }
-  }, [isProcessing, lang, onScanSuccess, t.raspiConnectionErr, t.scanReadErr]);
 
-  // マウント時に自動でOCRループを開姁E
+      setPhase('error');
+      setErrorMessage(data.error || t.scanReadErr);
+    } catch {
+      setPhase('error');
+      setErrorMessage(t.raspiConnectionErr);
+    } finally {
+      isProcessingRef.current = false;
+    }
+  }, [onScanSuccess, t.raspiConnectionErr, t.scanReadErr]);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      startScanning();
-    }, 1000);
+    const timer = setTimeout(() => startScanning(), 1000);
     return () => clearTimeout(timer);
   }, [startScanning]);
 
+  useEffect(() => {
+    if (phase === 'error') {
+      autoRetryRef.current = setTimeout(() => startScanning(), 3000);
+    }
+    return () => {
+      if (autoRetryRef.current) clearTimeout(autoRetryRef.current);
+    };
+  }, [phase, startScanning]);
+
+  const statusLabel = (() => {
+    switch (phase) {
+      case 'live':
+        return lang === 'ja' ? '学籍番号を枠に合わせてください' : 'Align your ID in the frame';
+      case 'capturing':
+        return lang === 'ja' ? `読み取り中… (${attempt}回目)` : `Reading… (attempt ${attempt})`;
+      case 'success':
+        return lang === 'ja' ? '読み取り成功！' : 'Scan Successful!';
+      case 'error':
+        return errorMessage || t.scanReadErr;
+    }
+  })();
+
+  const phaseColor =
+    phase === 'success' ? '#00E676' : phase === 'error' ? '#FF5252' : phase === 'capturing' ? '#FFD600' : '#00E676';
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#0B0F19]/95 p-4 text-white">
-      {/* ヘッダーエリア */}
-      <div className="w-full max-w-4xl flex justify-between items-center mb-6">
-        <div className="text-xl font-black tracking-wider text-[#00E676] italic">
-          GYM RESOLVATION
+    <div className={styles.overlay}>
+      <div className={styles.header}>
+        <div className={styles.brand}>
+          GYM RESERVATION
         </div>
-        <div className="flex items-center gap-2 bg-[#1A2333] px-3 py-1 rounded-full text-xs">
-          <span className="w-2 h-2 rounded-full bg-[#00E676] animate-pulse"></span>
-          <span>LIVE FEED</span>
+        <div className={styles.feedStatus}>
+          {streamOk ? (
+            <>
+              <span className={styles.liveDot}></span>
+              <span>LIVE FEED</span>
+            </>
+          ) : (
+            <>
+              <WifiOff size={12} className={styles.errorText} />
+              <span className={styles.errorText}>NO SIGNAL</span>
+            </>
+          )}
         </div>
       </div>
 
       {/* 映像モニター */}
-      <div className="relative w-full max-w-3xl aspect-[16/9] bg-black rounded-xl overflow-hidden border border-[#1E293B] shadow-2xl">
-        {/* リアルタイムカメラ映僁E*/}
-        <img 
-          src={videoStreamUrl} 
+      <div className={styles.cameraFrame}>
+        <img
+          key={streamKey}
+          src={videoStreamUrl}
           alt="Camera feed"
-          className="w-full h-full object-cover"
-          onError={() => {
-            setErrorMessage(t.raspiConnectionErr);
-          }}
+          className={styles.cameraImage}
+          onLoad={() => setStreamOk(true)}
+          onError={() => setStreamOk(false)}
         />
 
-        {/* ガイド枠オーバーレイ */}
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-          {/* ガイド目安枠 */}
-          <div className="relative w-[75%] aspect-[1.586] border-2 border-dashed border-white/20 rounded-xl">
-            
-            {/* 左上に学籍番号用 ターゲット枠 */}
-            <div className="absolute top-[8%] left-[5%] w-[50%] h-[25%] border-2 border-[#00E676] bg-[#00E676]/10 rounded shadow-[0_0_15px_rgba(0,230,118,0.4)]">
-              <div className="absolute -top-7 left-0 bg-[#00E676] text-black text-[10px] font-black px-2 py-0.5 rounded-sm whitespace-nowrap">
-                学籍番号を合わせてください
-              </div>
-              {/* 四隅のコーナー */}
-              <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-[#00E676]"></div>
-              <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-[#00E676]"></div>
-              <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-[#00E676]"></div>
-              <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-[#00E676]"></div>
-            </div>
-
+        {!streamOk && (
+          <div className={styles.noSignalOverlay}>
+            <WifiOff size={32} className={styles.errorText} />
+            <span className={styles.noSignalMessage}>{t.raspiConnectionErr}</span>
+            <button
+              onClick={() => setStreamKey((k) => k + 1)}
+              className={styles.reconnectButton}
+            >
+              <RefreshCw size={14} />
+              {lang === 'ja' ? '再接続中..' : 'Reconnect feed'}
+            </button>
           </div>
+        )}
+
+        {phase === 'capturing' && (
+          <div className={styles.flashOverlay} />
+        )}
+
+        {/* ===== 学籍番号読み取りエリアの「スポットライト」表示 =====
+            枠の外側だけ暗くし、CROP_BOXの範囲内はそのままの明度で見せる。*/}
+        <div
+          className={styles.cropGuide}
+          style={{
+            left: `${cropPercent.left}%`,
+            top: `${cropPercent.top}%`,
+            width: `${cropPercent.width}%`,
+            height: `${cropPercent.height}%`,
+            borderRadius: '16px',
+            border: `2px solid ${phaseColor}`,
+            boxShadow: `0 0 0 9999px rgba(0,0,0,0.65), 0 0 16px ${phaseColor}66`,
+          }}
+        >
+          {/* ラベル */}
+          <div
+            className={styles.cropLabel}
+            style={{ backgroundColor: phaseColor }}
+          >
+            {phase === 'capturing' && <Camera size={10} />}
+            {phase === 'success' && <CheckCircle2 size={10} />}
+            {phase === 'error' && <XCircle size={10} />}
+            {phase === 'live' && (lang === 'ja' ? '枠内に学籍番号を合わせてください' : 'Align ID here')}
+            {phase === 'capturing' && (lang === 'ja' ? '撮影中' : 'Capturing')}
+            {phase === 'success' && (lang === 'ja' ? '成功！' : 'Success')}
+            {phase === 'error' && (lang === 'ja' ? '再試行中' : 'Retrying')}
+          </div>
+
+          {/* 四隅のコーナーを角丸にする*/}
+          <div className={`${styles.corner} ${styles.cornerTopLeft}`} style={{ borderColor: phaseColor }} />
+          <div className={`${styles.corner} ${styles.cornerTopRight}`} style={{ borderColor: phaseColor }} />
+          <div className={`${styles.corner} ${styles.cornerBottomLeft}`} style={{ borderColor: phaseColor }} />
+          <div className={`${styles.corner} ${styles.cornerBottomRight}`} style={{ borderColor: phaseColor }} />
         </div>
       </div>
 
       {/* ステータスと操作ボタン */}
-      <div className="mt-6 flex flex-col items-center gap-4 w-full max-w-xs">
-        <div className="flex items-center gap-3 text-sm text-gray-300 min-h-[24px]">
-          {isProcessing && !errorMessage && <Loader2 className="animate-spin text-[#00E676]" size={18} />}
-          <span>{errorMessage || statusText}</span>
+      <div className={styles.controls}>
+        <div className={styles.statusMessage}>
+          {phase === 'capturing' && <Loader2 className={`${styles.spin} ${styles.warningText}`} size={18} />}
+          {phase === 'success' && <CheckCircle2 className={styles.successText} size={18} />}
+          {phase === 'error' && <XCircle className={styles.errorText} size={18} />}
+          <span>{statusLabel}</span>
         </div>
 
-        <div className="flex gap-4 w-full">
-          {errorMessage && (
+        <div className={styles.actionRow}>
+          {phase === 'error' && (
             <button
               onClick={startScanning}
-              className="flex-1 flex items-center justify-center gap-2 bg-[#00E676] hover:bg-[#00C853] text-black font-bold py-2.5 px-4 rounded-xl text-sm transition-all"
+              className={styles.retryButton}
             >
               <RefreshCw size={16} />
               {t.btnRetry}
@@ -119,7 +216,7 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
           )}
           <button
             onClick={onClose}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#1E293B] hover:bg-[#334155] text-gray-300 py-2.5 px-4 rounded-xl text-sm transition-colors border border-[#334155]"
+            className={styles.backButton}
           >
             <ArrowLeft size={16} />
             {t.btnBack}

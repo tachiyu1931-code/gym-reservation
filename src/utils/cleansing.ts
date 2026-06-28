@@ -1,21 +1,19 @@
-/**
- * Converts Zenkaku (full-width) alphanumeric characters to Hankaku (half-width),
- * and converts Zenkaku spaces to Hankaku spaces.
+/*
+ 全角入力された場合、半角に修正
  */
 export function cleanAlphanumeric(val: string): string {
   if (!val) return '';
-  // Convert full-width alphanumeric to half-width
   let cleaned = val.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (s) => {
     return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
   });
-  // Convert full-width space to half-width space
+  // 全角スペースを半角スペースに変換
   cleaned = cleaned.replace(/　/g, ' ');
   return cleaned;
 }
 
 /**
- * Cleans Student ID inputs: converts full-width numbers to half-width,
- * removes all non-numeric characters, and trims.
+ * 学籍番号の整形: 
+ * 数字以外の文字列を切り取ります
  */
 export function cleanStudentId(val: string): string {
   const halfWidth = cleanAlphanumeric(val);
@@ -23,8 +21,8 @@ export function cleanStudentId(val: string): string {
 }
 
 /**
- * Cleans Class Name inputs: converts full-width letters/numbers to half-width,
- * converts alphabets to uppercase, and removes all whitespaces.
+ * クラス名の整形: クラス名が半角で入力されても、大文字に変換する。例）2b → 2B
+ * 空白の削除。
  */
 export function cleanClassName(val: string): string {
   const halfWidth = cleanAlphanumeric(val);
@@ -32,7 +30,7 @@ export function cleanClassName(val: string): string {
 }
 
 /**
- * Cleans Student Name inputs: trims leading and trailing whitespaces.
+ * 名前の入力で、スペースが紛れていた場合、削除。
  */
 export function cleanName(val: string): string {
   if (!val) return '';

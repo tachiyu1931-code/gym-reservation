@@ -12,7 +12,7 @@
  * =================================================
  */
 
-const RASPI_HOST = process.env.RASPI_OCR_HOST || '192.168.1.50';
+const RASPI_HOST = process.env.RASPI_OCR_HOST || '192.168.3.248';
 const RASPI_PORT = process.env.RASPI_OCR_PORT || '5000';
 
 // カメラ撮影+OCR処理に時間がかかるため、タイムアウトは長めに設定
@@ -31,7 +31,7 @@ interface ScanOptions {
 
 /**
  * ラズパイに撮影・OCR実行を依頼し、学籍番号を取得する。
- * これ1関数を呼ぶだけで読み取り結果が得られる。
+ * この関数を呼ぶだけで読み取り結果が得られる。
  */
 export async function scanStudentId(
   options: ScanOptions = {}
@@ -103,4 +103,4 @@ export async function checkConnection(): Promise<boolean> {
 }
 
 // ラズパイの映像ストリーム用URLの組み立て
-export const RASPI_VIDEO_URL = `http://${RASPI_HOST}:${RASPI_PORT}/scan`; 
+export const RASPI_VIDEO_URL = `http://${RASPI_HOST}:${RASPI_PORT}/stream`; 
