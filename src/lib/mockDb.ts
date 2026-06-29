@@ -1,4 +1,4 @@
-﻿// ==========================================
+// ==========================================
 // モックDB型定義
 // ==========================================
 
@@ -20,7 +20,21 @@ export interface UsageLog {
   deleted_at?: string | null;
 }
 
-export interface UserCache {
+
+export interface Notification {
+  id: number;
+  type: 'auto_checkout';
+  usage_log_id?: number | null;
+  student_number: string;
+  department: string;
+  grade: string;
+  name: string;
+  message: string;
+  is_read: boolean;
+  is_acknowledged: boolean;
+  created_at: string;
+  read_at?: string | null;
+}export interface UserCache {
   student_id: string;
   name: string;
   department: string;
@@ -43,6 +57,7 @@ export interface UserCache {
 const globalForMock = globalThis as unknown as {
   mockLogs: UsageLog[];
   mockCache: UserCache[];
+  mockNotifications: Notification[];
 };
 
 if (!globalForMock.mockLogs) {
@@ -85,7 +100,7 @@ if (!globalForMock.mockLogs) {
       id: 3,
       student_id: '20261003',
       name: '鈴木 一郎',
-      department: '高度情報処理科・ITエンジニア科',
+      department: '高度情報処理科/ITエンジニア科',
       grade: '1年',
       class_name: 'B組',
       is_staff: false,
@@ -95,6 +110,22 @@ if (!globalForMock.mockLogs) {
       auto_checked_out: false,
       usage_duration_minutes: null,
       admin_confirmed: false,
+      created_at: new Date(Date.now() - 600000).toISOString(),
+      deleted_at: null,
+    },
+    {
+      id: 4,
+      student_id: '20261004',
+      name: '佐藤茂',
+      department: '高度情報処理科/ITエンジニア科',
+      grade: '3年',
+      class_name: 'B組',
+      is_staff: false,
+      user_type: 'student',
+      checked_in_at: new Date(Date.now() - 3600000 * 16).toISOString(),
+      checked_out_at: new Date(Date.now() - 3600000).toISOString(),
+      auto_checked_out: true,
+      usage_duration_minutes: 900,admin_confirmed: false,
       created_at: new Date(Date.now() - 600000).toISOString(),
       deleted_at: null,
     },
@@ -138,7 +169,7 @@ if (!globalForMock.mockCache) {
     {
       student_id: '20261003',
       name: '鈴木 一郎',
-      department: '高度情報処理科・ITエンジニア科',
+      department: '高度情報処理科/ITエンジニア科',
       grade: '1年',
       class_name: 'B組',
       is_staff: false,
@@ -154,8 +185,14 @@ if (!globalForMock.mockCache) {
   ];
 }
 
+
+if (!globalForMock.mockNotifications) {
+  globalForMock.mockNotifications = [];
+}
+
 export const mockLogs = globalForMock.mockLogs;
 export const mockCache = globalForMock.mockCache;
+export const mockNotifications = globalForMock.mockNotifications;
 
 export function isUseMock(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -206,7 +243,7 @@ if (!globalForDept.mockDepartments) {
     },
     {
       id: 2,
-      name: '高度情報処理科・ITエンジニア科',
+      name: '高度情報処理科/ITエンジニア科',
       years_count: 3,
       classes: [
         { grade: 1, class_name: 'B組', sort_order: 0 },
@@ -221,6 +258,55 @@ if (!globalForDept.mockDepartments) {
       classes: [
         { grade: 1, class_name: 'C組', sort_order: 0 },
         { grade: 2, class_name: 'C組', sort_order: 0 },
+      ],
+    },
+    {
+      id: 4,
+      name: 'ゲームクリエイター科',
+      years_count: 4,
+      classes: [
+        { grade: 1, class_name: 'D組', sort_order: 0 },
+        { grade: 2, class_name: 'D組', sort_order: 0 },
+        { grade: 3, class_name: 'D組', sort_order: 0 },
+        { grade: 4, class_name: 'D組', sort_order: 0 },
+      ],
+    },
+    {
+      id: 5,
+      name: '総合デザイン科/Web・CGデザイン科',
+      years_count: 3,
+      classes: [
+        { grade: 1, class_name: 'F組', sort_order: 0 },
+        { grade: 2, class_name: 'F組', sort_order: 0 },
+        { grade: 3, class_name: 'F組', sort_order: 0 },
+      ],
+    },
+    {
+      id: 6,
+      name: '建築設計科/インテリアデザイン科',
+      years_count: 2,
+      classes: [
+        { grade: 1, class_name: 'H組', sort_order: 0 },
+        { grade: 2, class_name: 'H組', sort_order: 0 },
+        { grade: 1, class_name: 'I組', sort_order: 0 },
+        { grade: 2, class_name: 'I組', sort_order: 0 },
+      ],
+    },
+    {
+      id: 5,
+      name: '建築士専攻科',
+      years_count: 3,
+      classes: [
+        { grade: 3, class_name: 'K組', sort_order: 0 },
+      ],
+    },
+    {
+      id: 6,
+      name: '国際ITビジネス科',
+      years_count: 2,
+      classes: [
+        { grade: 1, class_name: 'G組', sort_order: 0 },
+        { grade: 2, class_name: 'G組', sort_order: 0 },
       ],
     },
   ];

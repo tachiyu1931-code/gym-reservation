@@ -20,7 +20,7 @@ import { detectUserType } from '@/utils/detectUserType';
 import { DEFAULT_LANGUAGE, TRANSLATIONS, type SupportedLanguage, type TranslationMessages } from '@/lib/translations';
 import { ScannerOverlay } from '@/components/ScannerOverlay';
 
-const GRADES = ['1年', '2年', '3年', '4年', '教�E員'];
+const GRADES = ['1年', '2年', '3年', '4年', '教職員'];
 const STAFF_LABEL = '教職員';
 
 const GRADE_LABEL_KEYS: Record<string, keyof Pick<TranslationMessages, 'grade1' | 'grade2' | 'grade3' | 'grade4'>> = {

@@ -1,9 +1,77 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { isUseMock, mockLogs } from '@/lib/mockDb';
+import { isUseMock, mockLogs, mockNotifications } from '@/lib/mockDb';
 import { addUsageStats, calculateUsageMinutes } from '@/lib/usageStats';
 
 const AUTO_CHECKOUT_HOURS = 15;
+
+type AutoCheckoutNotificationLog = {
+  id: number;
+  student_id: string;
+  name: string;
+  department: string;
+  grade: string;
+};
+
+function buildAutoCheckoutMessage(log: AutoCheckoutNotificationLog) {
+  return `${log.student_id} ${log.name} さんが15時間経過により自動退室になりました。`;
+}
+
+function addMockAutoCheckoutNotification(log: AutoCheckoutNotificationLog) {
+  const exists = mockNotifications.some(
+    (notification) => notification.type === 'auto_checkout' && notification.usage_log_id === log.id
+  );
+  if (exists) return;
+
+  const newId = mockNotifications.length > 0 ? Math.max(...mockNotifications.map((n) => n.id)) + 1 : 1;
+  mockNotifications.unshift({
+    id: newId,
+    type: 'auto_checkout',
+    usage_log_id: log.id,
+    student_number: log.student_id,
+    department: log.department,
+    grade: log.grade,
+    name: log.name,
+    message: buildAutoCheckoutMessage(log),
+    is_read: false,
+    is_acknowledged: false,
+    created_at: new Date().toISOString(),
+    read_at: null,
+  });
+}
+
+async function createAutoCheckoutNotification(log: AutoCheckoutNotificationLog) {
+  const { data: existing, error: selectError } = await supabase
+    .from('notifications')
+    .select('id')
+    .eq('type', 'auto_checkout')
+    .eq('usage_log_id', log.id)
+    .maybeSingle();
+
+  if (selectError) {
+    console.error('Failed to check auto-checkout notification:', selectError);
+    return;
+  }
+
+  if (existing) return;
+
+  const { error } = await supabase.from('notifications').insert({
+    type: 'auto_checkout',
+    usage_log_id: log.id,
+    student_number: log.student_id,
+    department: log.department,
+    grade: log.grade,
+    name: log.name,
+    message: buildAutoCheckoutMessage(log),
+    is_read: false,
+    is_acknowledged: false,
+    read_at: null,
+  });
+
+  if (error) {
+    console.error('Failed to create auto-checkout notification:', error);
+  }
+}
 
 async function runAutoCheckout() {
   if (isUseMock()) {
@@ -16,6 +84,7 @@ async function runAutoCheckout() {
         log.auto_checked_out = true;
         log.usage_duration_minutes = minutes;
         log.admin_confirmed = false;
+        addMockAutoCheckoutNotification(log);
         addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
       }
     }
@@ -25,7 +94,7 @@ async function runAutoCheckout() {
   const autoCheckoutTime = new Date(Date.now() - AUTO_CHECKOUT_HOURS * 3600000).toISOString();
   const { data: oldLogs, error: selectError } = await supabase
     .from('usage_logs')
-    .select('id, student_id, checked_in_at')
+    .select('id, student_id, name, department, grade, checked_in_at')
     .is('checked_out_at', null)
     .is('deleted_at', null)
     .lt('checked_in_at', autoCheckoutTime);
@@ -44,9 +113,12 @@ async function runAutoCheckout() {
         admin_confirmed: false,
       })
       .eq('id', log.id)
-      .is('checked_out_at', null);
+      .is('checked_out_at', null)
+      .select('id')
+      .single();
 
     if (!updateError) {
+      await createAutoCheckoutNotification(log);
       await addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
     }
   }
@@ -119,7 +191,7 @@ export async function POST(request: Request) {
 
     const { data: targetLog, error: selectError } = await supabase
       .from('usage_logs')
-      .select('id, student_id, checked_in_at')
+      .select('id, student_id, name, department, grade, checked_in_at')
       .eq('id', log_id)
       .is('checked_out_at', null)
       .is('deleted_at', null)

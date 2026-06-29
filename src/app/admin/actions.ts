@@ -2,11 +2,160 @@
 
 import { supabase } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
-import { isUseMock, mockLogs, mockCache, mockDepartments, type DeptClass } from '@/lib/mockDb';
+import { isUseMock, mockLogs, mockCache, mockDepartments, mockNotifications } from '@/lib/mockDb';
+import { addUsageStats, calculateUsageMinutes } from '@/lib/usageStats';
+
+const AUTO_CHECKOUT_HOURS = 15;
+
+type AutoCheckoutNotificationSource = {
+  id: number;
+  student_id: string;
+  name: string;
+  department: string;
+  grade: string;
+  checked_in_at?: string;
+  checked_out_at?: string | null;
+};
+
+function buildAutoCheckoutNotificationMessage(log: AutoCheckoutNotificationSource) {
+  return `${log.student_id} ${log.name} さんが15時間経過により自動退室になりました。`;
+}
+
+function addMockNotificationForAutoCheckout(log: AutoCheckoutNotificationSource) {
+  const exists = mockNotifications.some(
+    (notification) => notification.type === 'auto_checkout' && notification.usage_log_id === log.id
+  );
+  if (exists) return;
+
+  const newId = mockNotifications.length > 0 ? Math.max(...mockNotifications.map((n) => n.id)) + 1 : 1;
+  mockNotifications.unshift({
+    id: newId,
+    type: 'auto_checkout',
+    usage_log_id: log.id,
+    student_number: log.student_id,
+    department: log.department,
+    grade: log.grade,
+    name: log.name,
+    message: buildAutoCheckoutNotificationMessage(log),
+    is_read: false,
+    is_acknowledged: false,
+    created_at: new Date().toISOString(),
+    read_at: null,
+  });
+}
+
+async function createNotificationForAutoCheckout(log: AutoCheckoutNotificationSource) {
+  const { data: existing, error: selectError } = await supabase
+    .from('notifications')
+    .select('id')
+    .eq('type', 'auto_checkout')
+    .eq('usage_log_id', log.id)
+    .maybeSingle();
+
+  if (selectError) throw selectError;
+  if (existing) return;
+
+  const { error } = await supabase.from('notifications').insert({
+    type: 'auto_checkout',
+    usage_log_id: log.id,
+    student_number: log.student_id,
+    department: log.department,
+    grade: log.grade,
+    name: log.name,
+    message: buildAutoCheckoutNotificationMessage(log),
+    is_read: false,
+    is_acknowledged: false,
+    read_at: null,
+  });
+
+  if (error) throw error;
+}
+
+async function ensureAutoCheckoutNotifications() {
+  if (isUseMock()) {
+    const now = Date.now();
+    for (const log of mockLogs) {
+      const isExpired = !log.checked_out_at && (now - new Date(log.checked_in_at).getTime()) > AUTO_CHECKOUT_HOURS * 3600000;
+      if (isExpired) {
+        const checkedOutAt = new Date(new Date(log.checked_in_at).getTime() + AUTO_CHECKOUT_HOURS * 3600000).toISOString();
+        const minutes = calculateUsageMinutes(log.checked_in_at, checkedOutAt);
+        log.checked_out_at = checkedOutAt;
+        log.auto_checked_out = true;
+        log.usage_duration_minutes = minutes;
+        log.admin_confirmed = false;
+        await addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
+      }
+
+      if (log.auto_checked_out && !log.deleted_at) {
+        addMockNotificationForAutoCheckout(log);
+      }
+    }
+    return;
+  }
+
+  const autoCheckoutTime = new Date(Date.now() - AUTO_CHECKOUT_HOURS * 3600000).toISOString();
+  const { data: oldLogs, error: selectOldError } = await supabase
+    .from('usage_logs')
+    .select('id, student_id, name, department, grade, checked_in_at')
+    .is('checked_out_at', null)
+    .is('deleted_at', null)
+    .lt('checked_in_at', autoCheckoutTime);
+
+  if (selectOldError) throw selectOldError;
+
+  for (const log of oldLogs ?? []) {
+    const checkedOutAt = new Date(new Date(log.checked_in_at).getTime() + AUTO_CHECKOUT_HOURS * 3600000).toISOString();
+    const minutes = calculateUsageMinutes(log.checked_in_at, checkedOutAt);
+    const { error: updateError } = await supabase
+      .from('usage_logs')
+      .update({
+        checked_out_at: checkedOutAt,
+        usage_duration_minutes: minutes,
+        auto_checked_out: true,
+        admin_confirmed: false,
+      })
+      .eq('id', log.id)
+      .is('checked_out_at', null);
+
+    if (!updateError) {
+      await createNotificationForAutoCheckout({ ...log, checked_out_at: checkedOutAt });
+      await addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
+    }
+  }
+
+  const { data: autoCheckedOutLogs, error: selectAutoError } = await supabase
+    .from('usage_logs')
+    .select('id, student_id, name, department, grade, checked_in_at, checked_out_at')
+    .eq('auto_checked_out', true)
+    .is('deleted_at', null)
+    .order('checked_in_at', { ascending: false })
+    .limit(100);
+
+  if (selectAutoError) throw selectAutoError;
+
+  for (const log of autoCheckedOutLogs ?? []) {
+    await createNotificationForAutoCheckout(log);
+  }
+}
 
 // ==========================================
 // 型定義
 // ==========================================
+
+
+export type AdminNotification = {
+  id: number;
+  type: string;
+  usage_log_id?: number | null;
+  student_number: string;
+  department: string;
+  grade: string;
+  name: string;
+  message?: string | null;
+  is_read: boolean;
+  created_at: string;
+  read_at?: string | null;
+};
 
 export type DepartmentClass = { grade: number; class_name: string; sort_order: number };
 
@@ -442,4 +591,59 @@ export async function getDeletedStudentCaches() {
     throw error;
   }
   return data || [];
+}
+// ==========================================
+// 通知
+// ==========================================
+
+/** 自動退室通知を取得 */
+export async function getNotifications(): Promise<AdminNotification[]> {
+  await ensureAutoCheckoutNotifications();
+
+  if (isUseMock()) {
+    return [...mockNotifications].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }
+
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('id, type, usage_log_id, student_number, department, grade, name, message, is_read, created_at, read_at')
+    .eq('type', 'auto_checkout')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('getNotifications error:', error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+/** 通知を既読化 */
+export async function markNotificationRead(id: number): Promise<{ success: true }> {
+  const readAt = new Date().toISOString();
+
+  if (isUseMock()) {
+    const notification = mockNotifications.find((n) => n.id === id);
+    if (notification) {
+      notification.is_read = true;
+      notification.is_acknowledged = true;
+      notification.read_at = readAt;
+    }
+    return { success: true };
+  }
+
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true, is_acknowledged: true, read_at: readAt })
+    .eq('id', id);
+
+  if (error) {
+    console.error('markNotificationRead error:', error);
+    throw error;
+  }
+
+  revalidatePath('/admin');
+  return { success: true };
 }

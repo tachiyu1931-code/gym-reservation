@@ -36,6 +36,7 @@ import {
   type DepartmentMaster
 } from '@/app/admin/actions';
 import { normalizeDepartment } from '@/constants/departments';
+import NotificationBell from '@/components/NotificationBell';
 
 // 利用ログの型
 interface UsageLog {
@@ -48,6 +49,7 @@ interface UsageLog {
   is_staff: boolean;
   checked_in_at: string;
   checked_out_at: string | null;
+  auto_checked_out: boolean;
   created_at: string;
   deleted_at?: string | null;
 }
@@ -451,10 +453,13 @@ export default function AdminDashboard() {
             利用記録の確認とキャッシュマスタの保守
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={loadData} disabled={loading || actionLoading}>
-          <RefreshCw size={16} className={loading ? 'spinner' : ''} />
-          {loading ? '読込中' : '再読込'}
-        </button>
+        <div className="admin-header-actions">
+          <button className="btn btn-secondary" onClick={loadData} disabled={loading || actionLoading}>
+            <RefreshCw size={16} className={loading ? 'spinner' : ''} />
+            {loading ? '読込中' : '再読込'}
+          </button>
+          <NotificationBell />
+        </div>
       </div>
 
       {/* タブ切り替え */}
@@ -628,6 +633,25 @@ export default function AdminDashboard() {
                 <tbody>
                   {filteredLogs.map(log => {
                     const isActive = !log.checked_out_at;
+                    const isAutoCheckedOut = !isActive && log.auto_checked_out;
+                    const statusLabel = isActive ? '在室中' : isAutoCheckedOut ? '自動退室' : '退室済';
+                    const statusStyle = isActive
+                      ? {
+                          background: 'rgba(16,185,129,0.15)',
+                          color: 'var(--primary)',
+                          border: '1px solid var(--primary)',
+                        }
+                      : isAutoCheckedOut
+                      ? {
+                          background: 'rgba(234,179,8,0.18)',
+                          color: '#facc15',
+                          border: '1px solid rgba(234,179,8,0.55)',
+                        }
+                      : {
+                          background: 'rgba(255,255,255,0.07)',
+                          color: 'var(--text-muted)',
+                          border: '1px solid transparent',
+                        };
                     const stayMin = log.checked_out_at
                       ? Math.round((new Date(log.checked_out_at).getTime() - new Date(log.checked_in_at).getTime()) / 60000)
                       : null;
@@ -640,11 +664,9 @@ export default function AdminDashboard() {
                             borderRadius: '9999px',
                             fontSize: '0.78rem',
                             fontWeight: 500,
-                            background: isActive ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.07)',
-                            color: isActive ? 'var(--primary)' : 'var(--text-muted)',
-                            border: `1px solid ${isActive ? 'var(--primary)' : 'transparent'}`
+                            ...statusStyle,
                           }}>
-                            {isActive ? '在室中' : '退室済'}
+                            {statusLabel}
                           </span>
                         </td>
                         <td>{new Date(log.checked_in_at).toLocaleString('ja-JP')}</td>
@@ -1189,6 +1211,8 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+
 
       {/* ローディングスピナー */}
       {loading && (
