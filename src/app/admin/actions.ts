@@ -137,6 +137,9 @@ export async function addDepartmentClass(departmentId: number, grade: number, cl
   if (isUseMock()) {
     const dept = mockDepartments.find((d) => d.id === departmentId);
     if (!dept) throw new Error('学科が見つかりません。');
+    if (grade > dept.years_count) {
+      throw new Error(`${dept.name}は${dept.years_count}年制のため、${grade}年のクラスは追加できません。`);
+    }
     const exists = dept.classes.some(
       (c) => c.grade === grade && c.class_name === normalizedName
     );
@@ -146,6 +149,17 @@ export async function addDepartmentClass(departmentId: number, grade: number, cl
     revalidatePath('/');
     revalidatePath('/admin');
     return;
+  }
+
+  const { data: dept, error: deptError } = await supabase
+    .from('departments_master')
+    .select('name, years_count')
+    .eq('id', departmentId)
+    .single();
+  if (deptError) throw deptError;
+  if (!dept) throw new Error('学科が見つかりません。');
+  if (grade > dept.years_count) {
+    throw new Error(`${dept.name}は${dept.years_count}年制のため、${grade}年のクラスは追加できません。`);
   }
 
   const { error } = await supabase.from('department_classes').insert({

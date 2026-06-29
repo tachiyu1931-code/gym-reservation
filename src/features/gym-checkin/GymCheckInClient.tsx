@@ -81,15 +81,17 @@ type UsageLogLike = {
 };
 
 export default function GymCheckIn() {
-  const [lang, setLang] = useState<SupportedLanguage>(() => {
-    if (typeof window === 'undefined') return DEFAULT_LANGUAGE;
-
-    const savedLang = localStorage.getItem('gym_lang');
-    return savedLang === 'ja' || savedLang === 'en' ? savedLang : DEFAULT_LANGUAGE;
-  });
+  const [lang, setLang] = useState<SupportedLanguage>(DEFAULT_LANGUAGE);
   const [translations, setTranslations] = useState<TranslationMessages>(() => TRANSLATIONS[DEFAULT_LANGUAGE]);
   const [translationError, setTranslationError] = useState('');
 
+  useEffect(() => {
+    const savedLang = localStorage.getItem('gym_lang');
+    if (savedLang === 'ja' || savedLang === 'en') {
+      setLang(savedLang);
+      setTranslations(TRANSLATIONS[savedLang]);
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -396,6 +398,7 @@ export default function GymCheckIn() {
       setDepartment(detectedType === 'staff' ? STAFF_LABEL : '');
       setGrade(detectedType === 'staff' ? STAFF_LABEL : '');
       setClassName(detectedType === 'staff' ? STAFF_LABEL : '');
+      if (detectedType === 'student') await loadDepartmentMaster();
       setScreen('form');
     } catch (err) {
       console.error('lookupUserStatus failed:', err);
@@ -608,6 +611,7 @@ export default function GymCheckIn() {
   };
 
   const handleScanStudentId = async () => {
+    await loadDepartmentMaster();
     setScreen('scan');
     setErrorMessage('');
     setOcrResult('');
