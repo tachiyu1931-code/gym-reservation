@@ -159,7 +159,7 @@ export default function GymCheckIn() {
   const [rankingsLoading, setRankingsLoading] = useState(false);
 
   const encouragements = [t.msgCheckin, t.welcomeMessage, t.autoDetect];
-  const checkoutMessages = [t.msgCheckout, t.checkoutConfirm, t.btnBack];
+  const checkoutMessages = [t.msgCheckout, t.btnBack];
 
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recentInputRef = useRef<{ id: string; at: number } | null>(null);
