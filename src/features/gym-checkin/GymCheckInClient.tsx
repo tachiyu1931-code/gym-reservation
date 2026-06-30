@@ -386,7 +386,7 @@ export default function GymCheckIn() {
         setGrade(log.grade || '');
         setClassName(log.class_name || '');
         setUserType(log.is_staff ? 'staff' : detectedType);
-        await executeCheckOut(log);
+        setScreen('checkout-confirm');
         return;
       }
 
@@ -539,7 +539,25 @@ export default function GymCheckIn() {
         });
 
         if (res.ok) {
-          setScannedName(cleanN);
+          const result = await res.json() as {
+            status?: 'checked_in' | 'active';
+            log?: UsageLogLike;
+            data?: Partial<UsageLogLike>;
+          };
+
+          if (result.status === 'active' && result.log) {
+            const log = result.log;
+            setCheckoutLog(log);
+            setName(log.name || '');
+            setDepartment(log.department || '');
+            setGrade(log.grade || '');
+            setClassName(log.class_name || '');
+            setUserType(log.is_staff ? 'staff' : detectedType);
+            setScreen('checkout-confirm');
+            return;
+          }
+
+          setScannedName(result.data?.name || cleanN);
           setSuccessStats(null);
           setSuccessDuration(null);
           setSuccessMessage(encouragements[Math.floor(Math.random() * encouragements.length)]);
@@ -752,7 +770,7 @@ export default function GymCheckIn() {
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, width: '100%' }}>
             {[{ title: t.monthlyRanking, rows: rankings?.monthly ?? [], unit: 'minutes' }, { title: t.streakRanking, rows: rankings?.streaks ?? [], unit: 'days' }].map((section) => (
-              <div key={section.title} style={{ border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, background: 'rgba(15, 23, 42, 0.35)' }}>
+              <div key={section.title} style={{ border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, background: 'rgba(255, 255, 255, 0.94)' }}>
                 <h3 style={{ fontSize: '1rem', marginBottom: 12 }}>{section.title}</h3>
                 {section.rows.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)' }}>{t.noRankingData}</p>
@@ -806,6 +824,31 @@ export default function GymCheckIn() {
         </div>
       )}
 
+      {screen === 'checkout-confirm' && checkoutLog && (
+        <div className="section" style={{ textAlign: 'center' }}>
+          <h2 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '8px' }}>
+            {t.statusActive}
+          </h2>
+          <p className="success-name">{formatDisplayName(checkoutLog.name || name, t.personSuffix)}</p>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>
+            {checkoutLog.student_id}
+          </p>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
+            {lang === 'ja' ? 'チェックイン時刻' : 'Checked in'}: {new Date(checkoutLog.checked_in_at).toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-US')}
+          </p>
+          <p style={{ fontSize: '1.1rem', marginBottom: '32px' }}>
+            {t.checkoutConfirm}
+          </p>
+          <div className="btn-group">
+            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleReset} disabled={loading}>
+              {t.btnCancel}
+            </button>
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => executeCheckOut()} disabled={loading}>
+              {loading ? <Loader2 className="spinner" size={20} /> : t.btnCheckout}
+            </button>
+          </div>
+        </div>
+      )}
       {/* 2. 手続きフォーム画面 */}
       {screen === 'form' && (
         <div className="section" style={{ justifyContent: 'flex-start' }}>
