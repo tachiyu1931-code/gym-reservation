@@ -784,7 +784,7 @@ export default function GymCheckIn() {
       {screen === 'checkin-confirm' && (
         <div className="section" style={{ textAlign: 'center' }}>
           <h2 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '8px' }}>
-            {t.welcomeIn}
+            {t.messagesOfSupport}
           </h2>
           <p className="success-name">{formatDisplayName(name, t.personSuffix)}</p>
           {userType === 'student' && (
