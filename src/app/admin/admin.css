@@ -39,7 +39,7 @@
 .tab-navigation {
   display: flex;
   gap: 8px;
-  background: rgba(31, 47, 84, 0.8);
+  background: rgba(255, 255, 255, 0.94);
   padding: 6px;
   border-radius: var(--border-radius-md);
   border: 1px solid var(--card-border);
@@ -64,11 +64,11 @@
 
 .tab-btn:hover {
   color: var(--text-main);
-  background: rgba(255, 255, 255, 0.03);
+  background: #f6fffc;
 }
 
 .tab-btn.active {
-  color: #020617;
+  color: #ffffff;
   background: var(--primary);
   box-shadow: 0 4px 12px var(--primary-glow);
 }
@@ -82,7 +82,7 @@
 }
 
 .stat-card {
-  background: rgba(31, 47, 84, 0.8);
+  background: rgba(255, 255, 255, 0.94);
   border: 1px solid var(--card-border);
   border-radius: var(--border-radius-md);
   padding: 24px;
@@ -95,7 +95,7 @@
   width: 50px;
   height: 50px;
   border-radius: 12px;
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(14, 165, 160, 0.1);
   color: var(--accent);
   display: flex;
   justify-content: center;
@@ -103,7 +103,7 @@
 }
 
 .stat-card:nth-child(2) .stat-icon {
-  background: rgba(16, 185, 129, 0.1);
+  background: rgba(18, 191, 166, 0.1);
   color: var(--primary);
 }
 
@@ -125,7 +125,7 @@
 
 /* フィルター・ツールバー */
 .toolbar {
-  background: rgba(31, 47, 84, 0.8);
+  background: rgba(255, 255, 255, 0.94);
   border: 1px solid var(--card-border);
   border-radius: var(--border-radius-md);
   padding: 20px;
@@ -157,7 +157,7 @@
   overflow-x: auto;
   border: 1px solid var(--card-border);
   border-radius: var(--border-radius-md);
-  background: rgba(31, 47, 84, 0.8);
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .admin-table {
@@ -168,7 +168,7 @@
 }
 
 .admin-table th {
-  background: rgba(31, 47, 84, 0.8);
+  background: rgba(255, 255, 255, 0.94);
   padding: 16px 20px;
   font-weight: 600;
   color: var(--text-muted);
@@ -180,12 +180,12 @@
 
 .admin-table td {
   padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(31, 41, 55, 0.1);
   color: var(--text-main);
 }
 
 .admin-table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: #f8fffd;
 }
 
 /* アクションボタン */
@@ -204,18 +204,18 @@
 }
 
 .btn-danger-sm {
-  background: rgba(248, 113, 113, 0.1);
+  background: rgba(254, 242, 242, 0.95);
   color: var(--text-error);
   border: 1px solid var(--border-error);
 }
 
 .btn-danger-sm:hover {
   background: var(--text-error);
-  color: #020617;
+  color: #ffffff;
 }
 
 .btn-edit-sm {
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(14, 165, 160, 0.1);
   color: var(--accent);
   border: 1px solid var(--accent-glow);
 }
@@ -232,7 +232,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(31, 47, 84, 0.8);
+  background: rgba(31, 41, 55, 0.24);
   backdrop-filter: blur(8px);
   display: flex;
   justify-content: center;
@@ -241,7 +241,7 @@
 }
 
 .modal-content {
-  background: #0f172a;
+  background: #ffffff;
   border: 1px solid var(--card-border);
   border-radius: var(--border-radius-lg);
   padding: 30px;
@@ -307,7 +307,7 @@
   border-radius: 8px;
   border: 1px solid var(--card-border);
   background: rgb(196, 198, 91);
-  color: #020617;
+  color: #202938;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -330,7 +330,7 @@
   border-radius: 999px;
   background: #ef4444;
   color: #ffffff;
-  border: 2px solid #0f172a;
+  border: 2px solid #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -347,7 +347,7 @@
   width: min(520px, calc(100vw - 32px));
   max-height: min(400px, calc(100vh - 120px));
   overflow: hidden;
-  background: #0f172a;
+  background: #ffffff;
   border: 1px solid var(--card-border);
   border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-lg);
@@ -415,13 +415,13 @@
 }
 
 .notification-row.unread {
-  background: rgba(16, 185, 129, 0.08);
-  border-color: rgba(16, 185, 129, 0.2);
+  background: #ecfffb;
+  border-color: rgba(18, 191, 166, 0.24);
   color: var(--text-main);
 }
 
 .notification-row.read {
-  background: rgba(255, 255, 255, 0.03);
+  background: #f6fffc;
   color: var(--text-muted);
 }
 
@@ -457,7 +457,7 @@
   padding: 0 10px;
   border-radius: 8px;
   border: 1px solid var(--primary);
-  background: rgba(16, 185, 129, 0.12);
+  background: #ecfffb;
   color: var(--primary);
   display: inline-flex;
   align-items: center;
@@ -472,7 +472,7 @@
   cursor: default;
   opacity: 0.6;
   border-color: var(--card-border);
-  background: rgba(255, 255, 255, 0.04);
+  background: #f3f4f6;
   color: var(--text-muted);
 }
 

@@ -770,7 +770,7 @@ export default function GymCheckIn() {
           </h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, width: '100%' }}>
             {[{ title: t.monthlyRanking, rows: rankings?.monthly ?? [], unit: 'minutes' }, { title: t.streakRanking, rows: rankings?.streaks ?? [], unit: 'days' }].map((section) => (
-              <div key={section.title} style={{ border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, background: 'rgba(15, 23, 42, 0.35)' }}>
+              <div key={section.title} style={{ border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, background: 'rgba(255, 255, 255, 0.94)' }}>
                 <h3 style={{ fontSize: '1rem', marginBottom: 12 }}>{section.title}</h3>
                 {section.rows.length === 0 ? (
                   <p style={{ color: 'var(--text-muted)' }}>{t.noRankingData}</p>

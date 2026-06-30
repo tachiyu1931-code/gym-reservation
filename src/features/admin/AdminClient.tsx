@@ -820,10 +820,6 @@ export default function AdminDashboard() {
                 論理削除されたデータを復元、または完全削除できます。完全削除は元に戻せません。
               </p>
             </div>
-            <button className="btn btn-secondary" onClick={loadData} disabled={loading || actionLoading}>
-              <RefreshCw size={16} className={loading ? 'spinner' : ''} />
-              再読込
-            </button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
@@ -995,7 +991,7 @@ export default function AdminDashboard() {
 
           <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '10px' }}>
             {/* 学科別本日利用件数 */}
-            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid var(--card-border)', borderRadius: '16px', padding: '20px' }}>
+            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255, 255, 255, 0.94)', border: '1px solid var(--card-border)', borderRadius: '16px', padding: '20px' }}>
               <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', borderBottom: '1px solid var(--card-border)', paddingBottom: '8px' }}>
                 学科別利用状況 (本日)
               </h3>
@@ -1012,7 +1008,7 @@ export default function AdminDashboard() {
                           <span>{dept}</span>
                           <span style={{ fontWeight: 600 }}>{count} 件 ({percentage}%)</span>
                         </div>
-                        <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '9999px', overflow: 'hidden' }}>
+                        <div style={{ width: '100%', height: '8px', background: '#e5f7f4', borderRadius: '9999px', overflow: 'hidden' }}>
                           <div style={{ width: `${percentage}%`, height: '100%', background: 'var(--primary)', borderRadius: '9999px' }}></div>
                         </div>
                       </div>
@@ -1023,7 +1019,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* 最近の利用動向 */}
-            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid var(--card-border)', borderRadius: '16px', padding: '20px' }}>
+            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255, 255, 255, 0.94)', border: '1px solid var(--card-border)', borderRadius: '16px', padding: '20px' }}>
               <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', borderBottom: '1px solid var(--card-border)', paddingBottom: '8px' }}>
                 最近の入室記録 (最新5件)
               </h3>
@@ -1032,7 +1028,7 @@ export default function AdminDashboard() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {logs.slice(0, 5).map(log => (
-                    <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', paddingBottom: '8px', borderBottom: '1px solid rgba(255, 255, 255, 0.02)' }}>
+                    <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', paddingBottom: '8px', borderBottom: '1px solid rgba(31, 41, 55, 0.1)' }}>
                       <div>
                         <span style={{ fontWeight: 600 }}>{log.name}</span>
                         <span style={{ color: 'var(--text-muted)', marginLeft: '8px', fontSize: '0.8rem' }}>
@@ -1095,7 +1091,7 @@ export default function AdminDashboard() {
                 <div
                   key={dept.id}
                   style={{
-                    background: 'rgba(15, 23, 42, 0.4)',
+                    background: 'rgba(255, 255, 255, 0.94)',
                     border: '1px solid var(--card-border)',
                     borderRadius: '16px',
                     padding: '20px'
@@ -1139,7 +1135,7 @@ export default function AdminDashboard() {
                             gap: '6px',
                             padding: '4px 10px',
                             borderRadius: '9999px',
-                            background: 'rgba(16,185,129,0.12)',
+                            background: 'rgba(255, 255, 255, 0.94)',
                             border: '1px solid var(--primary)',
                             fontSize: '0.85rem'
                           }}
