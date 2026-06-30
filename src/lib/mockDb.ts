@@ -293,7 +293,7 @@ if (!globalForDept.mockDepartments) {
       ],
     },
     {
-      id: 5,
+      id: 7,
       name: '建築士専攻科',
       years_count: 3,
       classes: [
@@ -301,8 +301,8 @@ if (!globalForDept.mockDepartments) {
       ],
     },
     {
-      id: 6,
-      name: '国際ITビジネス科',
+      id: 8,
+      name: 'International IT Business Course(国際ITビジネス科)',
       years_count: 2,
       classes: [
         { grade: 1, class_name: 'G組', sort_order: 0 },

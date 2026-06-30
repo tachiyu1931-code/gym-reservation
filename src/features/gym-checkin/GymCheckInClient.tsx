@@ -306,25 +306,33 @@ export default function GymCheckIn() {
   };
 
   useEffect(() => {
-  if (screen !== 'success') return;
+    if (screen !== 'success') return;
 
-  const timer = window.setTimeout(() => {
-    handleReset();
-  }, 3000);
+    const timer = window.setTimeout(() => {
+      handleReset();
+    }, 3000);
 
-  return () => window.clearTimeout(timer);
-}, [screen]);
+    return () => window.clearTimeout(timer);
+  }, [screen]);
 
-    const handleDepartmentChange = (deptValue: string) => {
+  const getAvailableGradesForDepartment = (deptValue: string) => {
+    const classGrades = deptToClassesMap[deptValue]?.map((c) => c.grade) ?? [];
+    const uniqueGrades = Array.from(new Set(classGrades)).sort((a, b) => a - b);
+    if (uniqueGrades.length > 0) {
+      return uniqueGrades.map((gradeNum) => `${gradeNum}年`);
+    }
+
+    const yearsCount = deptToYearsMap[deptValue] ?? 4;
+    return GRADES.slice(0, yearsCount);
+  };
+
+  const handleDepartmentChange = (deptValue: string) => {
     setDepartment(deptValue);
 
-    // 学年が、新しい学科、修業年限を超えていた場合セルフリサーチ
-    const yearsCount = deptToYearsMap[deptValue] ?? 4;
-    const availableGrades = GRADES.slice(0, yearsCount);
+    const availableGrades = getAvailableGradesForDepartment(deptValue);
     if (grade && !availableGrades.includes(grade)) {
       setGrade('');
     }
-    // 学科が変わったらクラスもリセット
     setClassName('');
   };
 
@@ -886,11 +894,9 @@ export default function GymCheckIn() {
                     disabled={!department}
                   >
                     <option value="">{t.selectDefault}</option>
-                    {GRADES.filter(g => g !== '教職員')
-                      .slice(0, department ? (deptToYearsMap[department] ?? 4) : 4)
-                      .map((g, index) => (
-                        <option key={index} value={g}>{t[GRADE_LABEL_KEYS[g]]}</option>
-                      ))}
+                    {getAvailableGradesForDepartment(department).map((g, index) => (
+                      <option key={index} value={g}>{t[GRADE_LABEL_KEYS[g]] ?? g}</option>
+                    ))}
                   </select>
                 </div>
 
