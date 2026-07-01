@@ -1,24 +1,21 @@
 'use client';
 
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react-hooks/immutability */
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Camera,
-  Keyboard,
-  CheckCircle,
-  Loader2,
-  AlertCircle,
-  ArrowLeft,
-  RefreshCw,
-  Globe,
-  Trophy,
-  BarChart3
-} from 'lucide-react';
+import { AlertCircle, Globe, RefreshCw } from 'lucide-react';
 import { saveOfflineLog, getOfflineLogs, deleteOfflineLog } from '@/utils/db';
 import { DEPARTMENTS } from '@/constants/departments';
 import { cleanStudentId, cleanName } from '@/utils/cleansing';
 import { detectUserType } from '@/utils/detectUserType';
 import { DEFAULT_LANGUAGE, TRANSLATIONS, type SupportedLanguage, type TranslationMessages } from '@/lib/translations';
 import { ScannerOverlay } from '@/components/ScannerOverlay';
+import { WelcomeScreen } from './components/WelcomeScreen';
+import { RankingsScreen } from './components/RankingsScreen';
+import { CheckInConfirmScreen } from './components/CheckInConfirmScreen';
+import { CheckOutConfirmScreen } from './components/CheckOutConfirmScreen';
+import { ManualEntryScreen } from './components/ManualEntryScreen';
+import { SuccessScreen } from './components/SuccessScreen';
 
 const GRADES = ['1年', '2年', '3年', '4年', '教職員'];
 const STAFF_LABEL = '教職員';
@@ -159,7 +156,7 @@ export default function GymCheckIn() {
   const [rankingsLoading, setRankingsLoading] = useState(false);
 
   const encouragements = [t.msgCheckin, t.welcomeMessage, t.autoDetect];
-  const checkoutMessages = [t.msgCheckout, t.checkoutConfirm, t.btnBack];
+  const checkoutMessages = [t.msgCheckout, t.btnBack];
 
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recentInputRef = useRef<{ id: string; at: number } | null>(null);
@@ -645,31 +642,29 @@ export default function GymCheckIn() {
 
   return (
     <div className="app-container" onClick={resetTimeoutTimer}>
-      {/* 言語切り替えトグル */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 20px', gap: '8px', alignItems: 'center' }}>
-        <Globe size={16} style={{ color: 'var(--text-muted)' }} />
+      {/* 言語切り替えトグル: 小規模な共通部品のため親ファイルに残す */}
+      <div className="language-switcher">
+        <Globe size={16} className="language-switcher-icon" />
         <button
-          className={`btn ${lang === 'ja' ? 'btn-primary' : 'btn-secondary'}`}
-          style={{ padding: '4px 12px', fontSize: '0.85rem', minHeight: 'auto', width: 'auto' }}
+          className={'btn ' + (lang === 'ja' ? 'btn-primary' : 'btn-secondary') + ' language-button'}
           onClick={() => handleLanguageChange('ja')}
         >
-          日本語</button>
+          日本語
+        </button>
         <button
-          className={`btn ${lang === 'en' ? 'btn-primary' : 'btn-secondary'}`}
-          style={{ padding: '4px 12px', fontSize: '0.85rem', minHeight: 'auto', width: 'auto' }}
+          className={'btn ' + (lang === 'en' ? 'btn-primary' : 'btn-secondary') + ' language-button'}
           onClick={() => handleLanguageChange('en')}
         >
           English
         </button>
       </div>
 
-      {/* ヘッダー */}
+      {/* ヘッダー: 小規模な共通部品のため親ファイルに残す */}
       <div className="header">
         <h1 className="title">{t.title}</h1>
         <p className="subtitle">{t.subtitle}</p>
       </div>
 
-      {/* エラーメッセージ */}
       {(translationError || errorMessage) && (
         <div className="alert-box">
           <AlertCircle size={20} />
@@ -677,80 +672,21 @@ export default function GymCheckIn() {
         </div>
       )}
 
-      {/* 1. 受付画面 */}
       {screen === 'welcome' && (
-        <div className="section" style={{ minHeight: '40vh', justifyContent: 'center' }}>
-          <p style={{ letterSpacing: '0.18em', color: 'var(--text-muted)', marginBottom: 28 }}>
-            {t.heroPrompt}
-          </p>
-
-          <div style={{ width: '100%', maxWidth: 520, margin: '0 auto' }}>
-            <div className="form-group">
-              <label className="label">{t.labelStudentId}</label>
-              <div style={{ position: 'relative', width: '100%' }}>
-                <input
-                  type="text"
-                  className="input-text"
-                  placeholder={t.placeholderId}
-                  value={studentId}
-                  onChange={(e) => handleStudentIdChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') lookupUserStatus(studentId);
-                  }}
-                  style={{ paddingRight: '50px' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => lookupUserStatus(studentId)}
-                  disabled={loading || detectUserType(studentId) === 'unknown'}
-                  style={{
-                    position: 'absolute',
-                    right: '8px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'transparent',
-                    border: 'none',
-                    color: detectUserType(studentId) !== 'unknown' ? 'var(--primary)' : 'var(--text-muted)',
-                    cursor: detectUserType(studentId) !== 'unknown' ? 'pointer' : 'not-allowed',
-                    padding: '8px'
-                  }}
-                >
-                  {loading ? <Loader2 className="spinner" size={20} /> : <Keyboard size={20} />}
-                </button>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '28px 0' }}>
-              <div style={{ flex: 1, height: 1, background: 'var(--card-border)' }} />
-              <span style={{ color: 'var(--text-muted)' }}>{t.or}</span>
-              <div style={{ flex: 1, height: 1, background: 'var(--card-border)' }} />
-            </div>
-
-            <div className="btn-group" style={{ maxWidth: '520px' }}>
-              <button
-                className="btn btn-primary"
-                style={{ flex: 1 }}
-                onClick={handleScanStudentId}
-                disabled={loading}
-              >
-                <Camera size={24} />
-                {t.btnScan}
-              </button>
-              <button
-                className="btn btn-secondary"
-                style={{ flex: 1 }}
-                onClick={loadRankings}
-                disabled={rankingsLoading}
-              >
-                {rankingsLoading ? <Loader2 className="spinner" size={20} /> : <BarChart3 size={22} />}
-                {t.btnRankings}
-              </button>
-            </div>
-          </div>
-        </div>
+        <WelcomeScreen
+          t={t}
+          studentId={studentId}
+          loading={loading}
+          rankingsLoading={rankingsLoading}
+          handleStudentIdChange={handleStudentIdChange}
+          lookupUserStatus={lookupUserStatus}
+          handleScanStudentId={handleScanStudentId}
+          loadRankings={loadRankings}
+        />
       )}
+
       {screen === 'scan' && (
-       <ScannerOverlay
+        <ScannerOverlay
           lang={lang}
           t={t}
           onScanSuccess={async (scannedId) => {
@@ -761,289 +697,89 @@ export default function GymCheckIn() {
         />
       )}
 
-      {/* チェックイン確認画面(登録済み・未在室のユーザー向け) */}
       {screen === 'rankings' && (
-        <div className="section" style={{ justifyContent: 'flex-start' }}>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Trophy size={24} />
-            {t.rankingsTitle}
-          </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, width: '100%' }}>
-            {[{ title: t.monthlyRanking, rows: rankings?.monthly ?? [], unit: 'minutes' }, { title: t.streakRanking, rows: rankings?.streaks ?? [], unit: 'days' }].map((section) => (
-              <div key={section.title} style={{ border: '1px solid var(--card-border)', borderRadius: 8, padding: 16, background: 'rgba(255, 255, 255, 0.94)' }}>
-                <h3 style={{ fontSize: '1rem', marginBottom: 12 }}>{section.title}</h3>
-                {section.rows.length === 0 ? (
-                  <p style={{ color: 'var(--text-muted)' }}>{t.noRankingData}</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {section.rows.map((row) => (
-                      <div key={section.title + row.rank + row.user_code_suffix} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>#{row.rank}</span>
-                        <span style={{ flex: 1 }}>{row.name}</span>
-                        <strong>
-                          {section.unit === 'minutes'
-                            ? formatMessage(t.minutesUnit, { minutes: row.monthly_usage_minutes })
-                            : formatMessage(t.daysUnit, { days: row.consecutive_days })}
-                        </strong>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <button className="btn btn-secondary" style={{ marginTop: 24 }} onClick={handleReset}>
-            <ArrowLeft size={18} />
-            {t.btnBack}
-          </button>
-        </div>
+        <RankingsScreen t={t} rankings={rankings} formatMessage={formatMessage} handleReset={handleReset} />
       )}
 
       {screen === 'checkin-confirm' && (
-        <div className="section" style={{ textAlign: 'center' }}>
-          <h2 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '8px' }}>
-            {t.messagesOfSupport}
-          </h2>
-          <p className="success-name">{formatDisplayName(name, t.personSuffix)}</p>
-          {userType === 'student' && (
-            <p style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>
-              {department} / {GRADE_LABEL_KEYS[grade] ? t[GRADE_LABEL_KEYS[grade]] : grade} / {className}
-            </p>
-          )}
-          <p style={{ fontSize: '1.1rem', marginBottom: '32px' }}>
-            {t.welcomeMessage}
-          </p>
-          <div className="btn-group">
-            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleReset} disabled={loading}>
-              {t.btnCancel}
-            </button>
-            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => handleCheckInOrOut()} disabled={loading}>
-              {loading ? <Loader2 className="spinner" size={20} /> : t.btnCheckin}
-            </button>
-          </div>
-        </div>
+        <CheckInConfirmScreen
+          t={t}
+          name={name}
+          userType={userType}
+          department={department}
+          grade={grade}
+          className={className}
+          gradeLabelKeys={GRADE_LABEL_KEYS}
+          loading={loading}
+          handleReset={handleReset}
+          handleCheckInOrOut={handleCheckInOrOut}
+          formatDisplayName={formatDisplayName}
+        />
       )}
 
       {screen === 'checkout-confirm' && checkoutLog && (
-        <div className="section" style={{ textAlign: 'center' }}>
-          <h2 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--text-muted)', marginBottom: '8px' }}>
-            {t.statusActive}
-          </h2>
-          <p className="success-name">{formatDisplayName(checkoutLog.name || name, t.personSuffix)}</p>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '8px' }}>
-            {checkoutLog.student_id}
-          </p>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
-            {lang === 'ja' ? 'チェックイン時刻' : 'Checked in'}: {new Date(checkoutLog.checked_in_at).toLocaleString(lang === 'ja' ? 'ja-JP' : 'en-US')}
-          </p>
-          <p style={{ fontSize: '1.1rem', marginBottom: '32px' }}>
-            {t.checkoutConfirm}
-          </p>
-          <div className="btn-group">
-            <button className="btn btn-secondary" style={{ flex: 1 }} onClick={handleReset} disabled={loading}>
-              {t.btnCancel}
-            </button>
-            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => executeCheckOut()} disabled={loading}>
-              {loading ? <Loader2 className="spinner" size={20} /> : t.btnCheckout}
-            </button>
-          </div>
-        </div>
+        <CheckOutConfirmScreen
+          t={t}
+          lang={lang}
+          checkoutLog={checkoutLog}
+          name={name}
+          loading={loading}
+          handleReset={handleReset}
+          executeCheckOut={executeCheckOut}
+          formatDisplayName={formatDisplayName}
+        />
       )}
-      {/* 2. 手続きフォーム画面 */}
+
       {screen === 'form' && (
-        <div className="section" style={{ justifyContent: 'flex-start' }}>
-          <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--text-main)' }}>
-              {t.btnIn}{userType ? '(' : ''}{userType === 'student' ? t.student : userType === 'staff' ? t.staff : ''}{userType ? ')' : ''}
-            </h2>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-              {t.welcomeIn}
-            </p>
-          </div>
-
-          <form onSubmit={handleCheckInOrOut} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-
-            <div className="form-group">
-              <label className="label">{t.labelStudentId}</label>
-              <div style={{ position: 'relative', width: '100%' }}>
-                <input
-                  type="text"
-                  className="input-text"
-                  placeholder={t.placeholderId}
-                  value={studentId}
-                  onChange={(e) => handleStudentIdChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && detectUserType(studentId) !== 'unknown') {
-                      lookupUserStatus(studentId);
-                    }
-                  }}
-                  style={{ paddingRight: '50px' }}
-                />
-                <button
-                  type="button"
-                  onClick={() => detectUserType(studentId) !== 'unknown' && lookupUserStatus(studentId)}
-                  disabled={detectUserType(studentId) === 'unknown' || loading}
-                  style={{
-                    position: 'absolute',
-                    right: '8px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'transparent',
-                    border: 'none',
-                    color: detectUserType(studentId) !== 'unknown' ? 'var(--primary)' : 'var(--text-muted)',
-                    cursor: detectUserType(studentId) !== 'unknown' ? 'pointer' : 'not-allowed',
-                    padding: '8px'
-                  }}
-                >
-                  {loading ? <Loader2 className="spinner" size={20} /> : <Keyboard size={20} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="label">{t.labelName}</label>
-              <input
-                type="text"
-                className="input-text"
-                placeholder={t.placeholderName}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={(e) => setName(cleanName(e.target.value))}
-              />
-            </div>
-
-            {userType === 'student' && (
-              <div style={{ display: 'flex', gap: '12px', width: '100%', maxWidth: '480px', flexWrap: 'wrap' }}>
-                <div className="form-group" style={{ flex: '2 1 200px' }}>
-                  <label className="label">{t.labelDept}</label>
-                  <select
-                    className="select-box"
-                    value={department}
-                    onChange={(e) => handleDepartmentChange(e.target.value)}
-                  >
-                    <option value="">{t.selectDefault}</option>
-                    {dynamicDepartments.map((dept, index) => (
-                      <option key={index} value={dept}>{dept}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ flex: '1 1 140px' }}>
-                  <label className="label">{t.labelGrade}</label>
-                  <select
-                    className="select-box"
-                    value={grade}
-                    onChange={(e) => { setGrade(e.target.value); setClassName(''); }}
-                    disabled={!department}
-                  >
-                    <option value="">{t.selectDefault}</option>
-                    {getAvailableGradesForDepartment(department).map((g, index) => (
-                      <option key={index} value={g}>{t[GRADE_LABEL_KEYS[g]] ?? g}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ flex: '1 1 120px' }}>
-                  <label className="label">{t.labelClass}</label>
-                  <select
-                    className="select-box"
-                    value={className}
-                    onChange={(e) => setClassName(e.target.value)}
-                    disabled={!department || !grade}
-                  >
-                    <option value="">{t.selectDefault}</option>
-                    {(() => {
-                      const gradeNum = parseInt(grade?.charAt(0) || '0', 10);
-                      const allClasses = deptToClassesMap[department] || [];
-                      const filtered = allClasses.filter(c => c.grade === gradeNum);
-                      return filtered.length > 0
-                        ? filtered.map(c => (
-                            <option key={String(c.grade) + '-' + c.class_name} value={c.class_name}>
-                              {c.class_name}
-                            </option>
-                          ))
-                        : <option value="" disabled>{t.classUnregistered}</option>;
-                    })()}
-                  </select>
-                </div>
-              </div>
-            )}
-            <div className="btn-group" style={{ marginTop: '24px' }}>
-              <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={handleReset} disabled={loading}>
-                {t.btnCancel}
-              </button>
-              <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>
-                {loading ? <Loader2 className="spinner" size={20} /> : t.btnCheckin}
-              </button>
-            </div>
-          </form>
-        </div>
+        <ManualEntryScreen
+          t={t}
+          userType={userType}
+          studentId={studentId}
+          name={name}
+          department={department}
+          grade={grade}
+          className={className}
+          dynamicDepartments={dynamicDepartments}
+          deptToClassesMap={deptToClassesMap}
+          loading={loading}
+          handleCheckInOrOut={handleCheckInOrOut}
+          handleStudentIdChange={handleStudentIdChange}
+          lookupUserStatus={lookupUserStatus}
+          setName={setName}
+          handleDepartmentChange={handleDepartmentChange}
+          setGrade={setGrade}
+          setClassName={setClassName}
+          getAvailableGradesForDepartment={getAvailableGradesForDepartment}
+          gradeLabelKeys={GRADE_LABEL_KEYS}
+          handleReset={handleReset}
+        />
       )}
 
-      {/* 画面 */}
       {screen === 'success' && (
-        <div className="section">
-          <div className="success-icon-wrapper">
-            <div className="success-circle">
-              <CheckCircle size={56} color="var(--primary)" />
-            </div>
-          </div>
-          <h2 className="success-text-big">
-            {successType === 'checkout' ? t.successCheckout : t.successCheckin}
-          </h2>
-          <p className="success-name">{formatDisplayName(scannedName, t.personSuffix)}</p>
-          <p style={{ color: 'var(--text-muted)' }}>
-            {successMessage || (successType === 'checkout' ? t.msgCheckout : t.msgCheckin)}
-          </p>
-          {successType === 'checkin' && successStats && (
-            <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>
-              {formatMessage(t.monthlyUsageSummary, { minutes: successStats.monthly_usage_minutes })}
-            </p>
-          )}
-          {successType === 'checkout' && successDuration !== null && (
-            <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>
-              {formatMessage(t.usageDuration, { minutes: successDuration })}
-            </p>
-          )}
-          {successType === 'checkout' && successStats && (
-            <p style={{ color: 'var(--primary)', marginTop: 8, fontWeight: 700 }}>
-              {formatMessage(t.streakSummary, { days: successStats.consecutive_days })}
-            </p>
-          )}
-          {checkoutNotice && (
-            <p style={{ marginTop: 12, color: '#ffb86b', fontWeight: 600 }}>
-              {checkoutNotice}
-            </p>
-          )}
-          <div style={{ marginTop: '40px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            <Loader2 className="spinner" size={16} />
-            <span>{t.autoBack}</span>
-          </div>
-        </div>
+        <SuccessScreen
+          t={t}
+          successType={successType}
+          scannedName={scannedName}
+          successMessage={successMessage}
+          successStats={successStats}
+          successDuration={successDuration}
+          checkoutNotice={checkoutNotice}
+          formatMessage={formatMessage}
+          formatDisplayName={formatDisplayName}
+        />
       )}
-      {/* ステータスバッジ */}
-      <div className={`status-badge ${isOnline ? 'status-online' : 'status-offline'}`}>
+
+      {/* ステータスバッジ: 小規模な共通部品のため親ファイルに残す */}
+      <div className={'status-badge ' + (isOnline ? 'status-online' : 'status-offline')}>
         <div className="status-dot"></div>
         <span>
           {isOnline
             ? t.statusOnline
-            : `${t.statusOffline} (${formatMessage(t.statusUnsent, { count: offlineCount })})`
+            : t.statusOffline + ' (' + formatMessage(t.statusUnsent, { count: offlineCount }) + ')'
           }
         </span>
         {!isOnline && offlineCount > 0 && (
-          <button
-            onClick={updateOnlineStatus}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-main)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              marginLeft: '4px'
-            }}
-            title={t.retryTitle}
-          >
+          <button className="status-retry-button" onClick={updateOnlineStatus} title={t.retryTitle}>
             <RefreshCw size={12} />
           </button>
         )}
@@ -1051,3 +787,4 @@ export default function GymCheckIn() {
     </div>
   );
 }
+

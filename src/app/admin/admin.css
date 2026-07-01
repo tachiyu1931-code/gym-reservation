@@ -514,3 +514,12 @@
     align-self: flex-end;
   }
 }
+
+/* 管理画面: リファクタリング後の補助クラス */
+.admin-page-title { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.025em; }
+.admin-page-subtitle { font-size: 0.9rem; color: var(--text-muted); }
+.tab-count { font-size: 0.75rem; opacity: 0.85; }
+.admin-alert-box { max-width: 100%; }
+.admin-loading-section { min-height: 300px; }
+.admin-loading-text { margin-top: 16px; color: var(--text-muted); }
+

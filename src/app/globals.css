@@ -421,3 +421,50 @@ body {
   background-color: #f97316 !important;
   /* 退室：お好みの色（例：オレンジや赤） */
 }
+
+/* 利用者画面: リファクタリング後の画面単位スタイル */
+.language-switcher { display: flex; justify-content: flex-end; padding: 10px 20px; gap: 8px; align-items: center; }
+.language-switcher-icon { color: var(--text-muted); }
+.language-button { padding: 4px 12px; font-size: 0.85rem; min-height: auto; width: auto; }
+.checkin-welcome-section { min-height: 40vh; justify-content: center; }
+.checkin-hero-prompt { letter-spacing: 0.18em; color: var(--text-muted); margin-bottom: 28px; }
+.checkin-form-panel { width: 100%; max-width: 520px; margin: 0 auto; }
+.input-with-action { position: relative; width: 100%; }
+.input-with-action-control { padding-right: 50px; }
+.lookup-icon-button { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; padding: 8px; }
+.lookup-icon-button.is-active { color: var(--primary); cursor: pointer; }
+.lookup-icon-button.is-disabled { color: var(--text-muted); cursor: not-allowed; }
+.checkin-divider { display: flex; align-items: center; gap: 16px; margin: 28px 0; }
+.checkin-divider-line { flex: 1; height: 1px; background: var(--card-border); }
+.checkin-divider-label, .muted-text { color: var(--text-muted); }
+.checkin-main-actions { max-width: 520px; }
+.button-fill { flex: 1; }
+.rankings-section, .manual-entry-section { justify-content: flex-start; }
+.screen-title-with-icon { font-size: 1.5rem; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+.ranking-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; width: 100%; }
+.ranking-card { border: 1px solid var(--card-border); border-radius: 8px; padding: 16px; background: rgba(255, 255, 255, 0.94); }
+.ranking-card-title { font-size: 1rem; margin-bottom: 12px; }
+.ranking-list { display: flex; flex-direction: column; gap: 10px; }
+.ranking-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.ranking-name { flex: 1; }
+.rankings-back-button { margin-top: 24px; }
+.confirm-section { text-align: center; }
+.confirm-subtitle { font-size: 1.3rem; font-weight: 500; color: var(--text-muted); margin-bottom: 8px; }
+.confirm-meta { color: var(--text-muted); margin-bottom: 8px; }
+.confirm-meta-spaced { margin-bottom: 24px; }
+.confirm-message { font-size: 1.1rem; margin-bottom: 32px; }
+.manual-entry-heading { text-align: center; margin-bottom: 24px; }
+.manual-entry-title { font-size: 1.4rem; font-weight: bold; color: var(--text-main); }
+.manual-entry-caption { font-size: 0.9rem; color: var(--text-muted); margin-top: 4px; }
+.manual-entry-form { width: 100%; display: flex; flex-direction: column; align-items: center; }
+.manual-entry-fields-row { display: flex; gap: 12px; width: 100%; max-width: 480px; flex-wrap: wrap; }
+.manual-entry-department-field { flex: 2 1 200px; }
+.manual-entry-grade-field { flex: 1 1 140px; }
+.manual-entry-class-field { flex: 1 1 120px; }
+.manual-entry-actions { margin-top: 24px; }
+.success-detail-text { color: var(--text-muted); margin-top: 8px; }
+.success-streak-text { color: var(--primary); margin-top: 8px; font-weight: 700; }
+.checkout-notice-text { margin-top: 12px; color: #ffb86b; font-weight: 600; }
+.success-auto-back { margin-top: 40px; display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 0.9rem; }
+.status-retry-button { background: transparent; border: none; color: var(--text-main); cursor: pointer; display: flex; align-items: center; margin-left: 4px; }
+

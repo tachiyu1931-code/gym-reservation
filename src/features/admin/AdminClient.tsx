@@ -1,20 +1,9 @@
 'use client';
 
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect */
+
 import React, { useState, useEffect } from 'react';
-import {
-  Users,
-  History,
-  BarChart3,
-  Download,
-  Trash2,
-  Edit3,
-  Search,
-  X,
-  Loader2,
-  RefreshCw,
-  AlertCircle,
-  Settings
-} from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import {
   getUsageLogs,
   deleteUsageLog,
@@ -36,7 +25,14 @@ import {
   type DepartmentMaster
 } from '@/app/admin/actions';
 import { normalizeDepartment } from '@/constants/departments';
-import NotificationBell from '@/components/NotificationBell';
+import { AdminHeader } from './components/AdminHeader';
+import { AdminTabs } from './components/AdminTabs';
+import { UsageLogsTab } from './components/UsageLogsTab';
+import { UserCacheTab } from './components/UserCacheTab';
+import { TrashTab } from './components/TrashTab';
+import { StatsTab } from './components/StatsTab';
+import { DepartmentsTab } from './components/DepartmentsTab';
+import { EditCacheModal } from './components/EditCacheModal';
 
 // 利用ログの型
 interface UsageLog {
@@ -443,864 +439,124 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-layout">
-      {/* 管理者ヘッダー */}
-      <div className="admin-header">
-        <div className="admin-title-area">
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 700, letterSpacing: '-0.025em' }}>
-            GYM RESERVE - 管理パネル
-          </h1>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            利用記録の確認とキャッシュマスタの保守
-          </p>
-        </div>
-        <div className="admin-header-actions">
-          <button className="btn btn-secondary" onClick={loadData} disabled={loading || actionLoading}>
-            <RefreshCw size={16} className={loading ? 'spinner' : ''} />
-            {loading ? '読込中' : '再読込'}
-          </button>
-          <NotificationBell />
-        </div>
-      </div>
+      <AdminHeader loadData={loadData} loading={loading} actionLoading={actionLoading} />
 
-      {/* タブ切り替え */}
-      <div className="tab-navigation">
-        <button
-          className={`tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('logs'); setSearchQuery(''); setFilterDept(''); setFilterGrade(''); setFilterDate(''); }}
-        >
-          <History size={16} />
-          利用ログ一覧
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'departments' ? 'active' : ''}`}
-          onClick={() => setActiveTab('departments')}
-        >
-          <Settings size={16} />
-          学科・クラス管理
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'cache' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('cache'); setSearchQuery(''); setFilterDept(''); setFilterGrade(''); setFilterDate(''); }}
-        >
-          <Users size={16} />
-          利用者キャッシュ管理
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'stats' ? 'active' : ''}`}
-          onClick={() => setActiveTab('stats')}
-        >
-          <BarChart3 size={16} />
-          利用統計
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'trash' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('trash'); setSearchQuery(''); setFilterDept(''); setFilterGrade(''); setFilterDate(''); }}
-        >
-          <Trash2 size={16} />
-          ゴミ箱
-          {(deletedLogs.length + deletedCaches.length) > 0 && (
-            <span style={{ fontSize: '0.75rem', opacity: 0.85 }}>
-              ({deletedLogs.length + deletedCaches.length})
-            </span>
-          )}
-        </button>
-      </div>
+      <AdminTabs
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        setSearchQuery={setSearchQuery}
+        setFilterDept={setFilterDept}
+        setFilterGrade={setFilterGrade}
+        setFilterDate={setFilterDate}
+        deletedLogs={deletedLogs}
+        deletedCaches={deletedCaches}
+      />
 
-      {/* エラー表示 */}
       {errorMsg && (
-        <div className="alert-box" style={{ maxWidth: '100%' }}>
+        <div className="alert-box admin-alert-box">
           <AlertCircle size={20} />
           <span>{errorMsg}</span>
         </div>
       )}
 
-      {/* タブ1: 利用ログ一覧 */}
       {activeTab === 'logs' && !loading && (
-        <>
-          {/* 検索・フィルターツールバー */}
-          <div className="toolbar">
-            <div className="filter-group" style={{ flexGrow: 2 }}>
-              <label>検索 (氏名・学籍番号)</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  className="input-text"
-                  placeholder="検索ワードを入力..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ paddingLeft: '40px', paddingTop: '12px', paddingBottom: '12px', fontSize: '0.95rem' }}
-                />
-                <Search size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              </div>
-            </div>
-
-            <div className="filter-group">
-              <label>学科で絞り込み</label>
-              <select
-                className="select-box"
-                value={filterDept}
-                onChange={(e) => setFilterDept(e.target.value)}
-                style={{ fontSize: '0.95rem', paddingTop: '12px', paddingBottom: '12px' }}
-              >
-                <option value="">すべて</option>
-                {departments.map((dept) => (
-                  <option key={dept.id} value={normalizeDepartment(dept.name)}>{dept.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="filter-group" style={{ minWidth: '320px' }}>
-              <label>日付で絞り込み</label>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-
-                {/* 年の入力 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1.2 }}>
-                  <input
-                    type="number"
-                    className="input-text"
-                    placeholder="すべて"
-                    value={filterYear}
-                    onChange={(e) => setFilterYear(e.target.value)}
-                    min="2000"//2000年
-                    max="2100"//2100年まで
-                    style={{ padding: '12px 8px', fontSize: '0.95rem', textAlign: 'center' }}
-                  />
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>年</span>
-                </div>
-
-                {/* 月の入力 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
-                  <input
-                    type="number"
-                    className="input-text"
-                    placeholder="すべて"
-                    value={filterMonth}
-                    onChange={(e) => setFilterMonth(e.target.value)}
-                    min="1"
-                    max="12"
-                    style={{ padding: '12px 8px', fontSize: '0.95rem', textAlign: 'center' }}
-                  />
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>月</span>
-                </div>
-
-                {/* 日の入力 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1 }}>
-                  <input
-                    type="number"
-                    className="input-text"
-                    placeholder="すべて"
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                    min="1"
-                    max="31"
-                    style={{ padding: '12px 8px', fontSize: '0.95rem', textAlign: 'center' }}
-                  />
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>日</span>
-                </div>
-
-              </div>
-            </div>
-
-            <button className="btn btn-primary" onClick={downloadCSV} style={{ padding: '12px 24px', fontSize: '0.95rem' }}>
-              <Download size={16} />
-              CSV出力
-            </button>
-          </div>
-
-          {/* 利用ログテーブル */}
-          <div className="table-wrapper">
-            {filteredLogs.length === 0 ? (
-              <div className="empty-state">
-                <History size={48} className="empty-state-icon" />
-                <p>利用記録が見つかりません</p>
-              </div>
-            ) : (
-              <table className="admin-table">
-
-                <thead>
-                  <tr>
-                    <th>状態</th>
-                    <th>入室時刻</th>
-                    <th>退室時刻</th>
-                    <th>滞在時間</th>
-                    <th>学籍番号</th>
-                    <th>氏名</th>
-                    <th>クラス</th>
-                    <th>学科・学年</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLogs.map(log => {
-                    const isActive = !log.checked_out_at;
-                    const isAutoCheckedOut = !isActive && log.auto_checked_out;
-                    const statusLabel = isActive ? '在室中' : isAutoCheckedOut ? '自動退室' : '退室済';
-                    const statusStyle = isActive
-                      ? {
-                          background: 'rgba(16,185,129,0.15)',
-                          color: 'var(--primary)',
-                          border: '1px solid var(--primary)',
-                        }
-                      : isAutoCheckedOut
-                      ? {
-                          background: 'rgba(234,179,8,0.18)',
-                          color: '#facc15',
-                          border: '1px solid rgba(234,179,8,0.55)',
-                        }
-                      : {
-                          background: 'rgba(255,255,255,0.07)',
-                          color: 'var(--text-muted)',
-                          border: '1px solid transparent',
-                        };
-                    const stayMin = log.checked_out_at
-                      ? Math.round((new Date(log.checked_out_at).getTime() - new Date(log.checked_in_at).getTime()) / 60000)
-                      : null;
-                    return (
-                      <tr key={log.id}>
-                        <td>
-                          <span style={{
-                            display: 'inline-block',
-                            padding: '4px 10px',
-                            borderRadius: '9999px',
-                            fontSize: '0.78rem',
-                            fontWeight: 500,
-                            ...statusStyle,
-                          }}>
-                            {statusLabel}
-                          </span>
-                        </td>
-                        <td>{new Date(log.checked_in_at).toLocaleString('ja-JP')}</td>
-                        <td style={{ color: isActive ? 'var(--text-muted)' : undefined }}>
-                          {log.checked_out_at ? new Date(log.checked_out_at).toLocaleString('ja-JP') : '-'}
-                        </td>
-                        <td style={{ color: isActive ? 'var(--text-muted)' : undefined }}>
-                          {stayMin !== null ? `${stayMin}分` : '-'}
-                        </td>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{log.student_id}</td>
-                        <td style={{ fontWeight: 500 }}>{log.name}</td>
-                        <td>{log.class_name || '-'}</td>
-                        <td>{normalizeDepartment(log.department)} ({log.grade})</td>
-                        <td>
-                          <button
-                            className="btn-sm btn-danger-sm"
-                            onClick={() => handleDeleteLog(log.id)}
-                            disabled={actionLoading}
-                          >
-                            <Trash2 size={14} />
-                            削除
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
+        <UsageLogsTab
+          filteredLogs={filteredLogs}
+          departments={departments}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          filterDept={filterDept}
+          setFilterDept={setFilterDept}
+          filterYear={filterYear}
+          setFilterYear={setFilterYear}
+          filterMonth={filterMonth}
+          setFilterMonth={setFilterMonth}
+          filterDate={filterDate}
+          setFilterDate={setFilterDate}
+          downloadCSV={downloadCSV}
+          handleDeleteLog={handleDeleteLog}
+          actionLoading={actionLoading}
+        />
       )}
 
-      {/* タブ2: 学生キャッシュ管理 */}
       {activeTab === 'cache' && !loading && (
-        <>
-          {/* 検索・フィルターツールバー */}
-          <div className="toolbar">
-            <div className="filter-group" style={{ flexGrow: 2 }}>
-              <label>検索 (氏名・学籍番号)</label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  className="input-text"
-                  placeholder="検索ワードを入力..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{ paddingLeft: '40px', paddingTop: '12px', paddingBottom: '12px', fontSize: '0.95rem' }}
-                />
-                <Search size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              </div>
-            </div>
-
-            <div className="filter-group">
-              <label>学科で絞り込み</label>
-              <select
-                className="select-box"
-                value={filterDept}
-                onChange={(e) => setFilterDept(e.target.value)}
-                style={{ fontSize: '0.95rem', paddingTop: '12px', paddingBottom: '12px' }}
-              >
-                <option value="">すべて</option>
-                {departments.map((dept) => (
-                  <option key={dept.id} value={normalizeDepartment(dept.name)}>{dept.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="filter-group">
-              <label>学年で絞り込み</label>
-              <select
-                className="select-box"
-                value={filterGrade}
-                onChange={(e) => setFilterGrade(e.target.value)}
-                style={{ fontSize: '0.95rem', paddingTop: '12px', paddingBottom: '12px' }}
-              >
-                <option value="">すべて</option>
-                {[1, 2, 3, 4].map((grade) => (
-                  <option key={grade} value={`${grade}年`}>
-                    {grade}年生
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* キャッシュテーブル */}
-          <div className="table-wrapper">
-            {filteredCaches.length === 0 ? (
-              <div className="empty-state">
-                <Users size={48} className="empty-state-icon" />
-                <p>キャッシュデータが登録されていません</p>
-              </div>
-            ) : (
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>学籍番号</th>
-                    <th>氏名</th>
-                    <th>学科</th>
-                    <th>学年</th>
-                    <th>最終更新</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCaches.map(c => (
-                    <tr key={c.student_id}>
-                      <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{c.student_id}</td>
-                      <td style={{ fontWeight: 500 }}>{c.name}</td>
-                      <td>{c.department}</td>
-                      <td>{c.grade}</td>
-                      <td style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        {new Date(c.updated_at).toLocaleString('ja-JP')}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button
-                            className="btn-sm btn-edit-sm"
-                            onClick={() => openEditModal(c)}
-                            disabled={actionLoading}
-                          >
-                            <Edit3 size={14} />
-                            編集
-                          </button>
-                          <button
-                            className="btn-sm btn-danger-sm"
-                            onClick={() => handleDeleteCache(c.student_id)}
-                            disabled={actionLoading}
-                          >
-                            <Trash2 size={14} />
-                            削除
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </>
+        <UserCacheTab
+          filteredCaches={filteredCaches}
+          departments={departments}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          filterDept={filterDept}
+          setFilterDept={setFilterDept}
+          filterGrade={filterGrade}
+          setFilterGrade={setFilterGrade}
+          openEditModal={openEditModal}
+          handleDeleteCache={handleDeleteCache}
+          actionLoading={actionLoading}
+        />
       )}
-      {/* タブ: ゴミ箱 */}
+
       {activeTab === 'trash' && !loading && (
-        <div className="section" style={{ justifyContent: 'flex-start', alignItems: 'stretch', gap: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            <div>
-              <h2 style={{ fontSize: '1.3rem', fontWeight: 700 }}>ゴミ箱</h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-                論理削除されたデータを復元、または完全削除できます。完全削除は元に戻せません。
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
-            <div className="stat-card">
-              <div className="stat-icon"><History size={24} /></div>
-              <div className="stat-info">
-                <span className="stat-value">{deletedLogs.length} 件</span>
-                <span className="stat-label">削除済み利用ログ</span>
-              </div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon"><Users size={24} /></div>
-              <div className="stat-info">
-                <span className="stat-value">{deletedCaches.length} 件</span>
-                <span className="stat-label">削除済み利用者キャッシュ</span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 style={{ fontSize: '1.05rem', marginBottom: '12px' }}>利用ログ</h3>
-            <div className="table-wrapper">
-              {deletedLogs.length === 0 ? (
-                <div className="empty-state">
-                  <History size={48} className="empty-state-icon" />
-                  <p>削除済みの利用ログはありません</p>
-                </div>
-              ) : (
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>削除日時</th>
-                      <th>入室時刻</th>
-                      <th>退室時刻</th>
-                      <th>番号</th>
-                      <th>氏名</th>
-                      <th>クラス</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deletedLogs.map(log => (
-                      <tr key={log.id}>
-                        <td style={{ color: 'var(--text-muted)' }}>{log.deleted_at ? new Date(log.deleted_at).toLocaleString('ja-JP') : '-'}</td>
-                        <td>{new Date(log.checked_in_at).toLocaleString('ja-JP')}</td>
-                        <td>{log.checked_out_at ? new Date(log.checked_out_at).toLocaleString('ja-JP') : '-'}</td>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{log.student_id}</td>
-                        <td>{log.name}</td>
-                        <td>{log.class_name || '-'}</td>
-                        <td>
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            <button className="btn-sm btn-edit-sm" onClick={() => handleRestoreLog(log.id)} disabled={actionLoading}>
-                              <RefreshCw size={14} />
-                              復元
-                            </button>
-                            <button className="btn-sm btn-danger-sm" onClick={() => handlePermanentDeleteLog(log.id)} disabled={actionLoading}>
-                              <Trash2 size={14} />
-                              完全削除
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <h3 style={{ fontSize: '1.05rem', marginBottom: '12px' }}>利用者キャッシュ</h3>
-            <div className="table-wrapper">
-              {deletedCaches.length === 0 ? (
-                <div className="empty-state">
-                  <Users size={48} className="empty-state-icon" />
-                  <p>削除済みの利用者キャッシュはありません</p>
-                </div>
-              ) : (
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>削除日時</th>
-                      <th>番号</th>
-                      <th>氏名</th>
-                      <th>学科</th>
-                      <th>学年</th>
-                      <th>クラス</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deletedCaches.map(cache => (
-                      <tr key={cache.student_id}>
-                        <td style={{ color: 'var(--text-muted)' }}>{cache.deleted_at ? new Date(cache.deleted_at).toLocaleString('ja-JP') : '-'}</td>
-                        <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{cache.student_id}</td>
-                        <td>{cache.name}</td>
-                        <td>{cache.department}</td>
-                        <td>{cache.grade}</td>
-                        <td>{cache.class_name || '-'}</td>
-                        <td>
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            <button className="btn-sm btn-edit-sm" onClick={() => handleRestoreCache(cache.student_id)} disabled={actionLoading}>
-                              <RefreshCw size={14} />
-                              復元
-                            </button>
-                            <button className="btn-sm btn-danger-sm" onClick={() => handlePermanentDeleteCache(cache.student_id)} disabled={actionLoading}>
-                              <Trash2 size={14} />
-                              完全削除
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
+        <TrashTab
+          deletedLogs={deletedLogs}
+          deletedCaches={deletedCaches}
+          handleRestoreLog={handleRestoreLog}
+          handlePermanentDeleteLog={handlePermanentDeleteLog}
+          handleRestoreCache={handleRestoreCache}
+          handlePermanentDeleteCache={handlePermanentDeleteCache}
+          actionLoading={actionLoading}
+        />
       )}
-      {/* タブ3: 利用統計 */}
+
       {activeTab === 'stats' && !loading && (
-        <div className="section" style={{ justifyContent: 'flex-start', alignItems: 'stretch' }}>
-          <div className="dashboard-grid">
-            <div className="stat-card">
-              <div className="stat-icon">
-                <History size={24} />
-              </div>
-              <div className="stat-info">
-                <span className="stat-value">{todayCount} 回</span>
-                <span className="stat-label">本日の利用件数</span>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon">
-                <Users size={24} />
-              </div>
-              <div className="stat-info">
-                <span className="stat-value">{todayUniqueUsers} 人</span>
-                <span className="stat-label">本日の利用者数 (ユニーク)</span>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon">
-                <BarChart3 size={24} />
-              </div>
-              <div className="stat-info">
-                <span className="stat-value">{totalRegisteredCaches} 名</span>
-                <span className="stat-label">キャッシュ登録学生数</span>
-              </div>
-            </div>
-
-            <div className="stat-card">
-              <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)' }}>
-                <Users size={24} style={{ color: 'var(--primary)' }} />
-              </div>
-              <div className="stat-info">
-                <span className="stat-value">
-                  {logs.filter(l => !l.checked_out_at &&
-                    new Date(l.checked_in_at).toISOString().split('T')[0] === todayStr
-                  ).length} 人
-                </span>
-                <span className="stat-label">現在の在室人数</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '10px' }}>
-            {/* 学科別本日利用件数 */}
-            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255, 255, 255, 0.94)', border: '1px solid var(--card-border)', borderRadius: '16px', padding: '20px' }}>
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', borderBottom: '1px solid var(--card-border)', paddingBottom: '8px' }}>
-                学科別利用状況 (本日)
-              </h3>
-              {todayLogs.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', padding: '20px 0' }}>データがありません</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {Array.from(new Set(todayLogs.map(l => l.department))).map(dept => {
-                    const count = todayLogs.filter(l => l.department === dept).length;
-                    const percentage = Math.round((count / todayLogs.length) * 100);
-                    return (
-                      <div key={dept} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                          <span>{dept}</span>
-                          <span style={{ fontWeight: 600 }}>{count} 件 ({percentage}%)</span>
-                        </div>
-                        <div style={{ width: '100%', height: '8px', background: '#e5f7f4', borderRadius: '9999px', overflow: 'hidden' }}>
-                          <div style={{ width: `${percentage}%`, height: '100%', background: 'var(--primary)', borderRadius: '9999px' }}></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* 最近の利用動向 */}
-            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255, 255, 255, 0.94)', border: '1px solid var(--card-border)', borderRadius: '16px', padding: '20px' }}>
-              <h3 style={{ fontSize: '1.1rem', marginBottom: '16px', borderBottom: '1px solid var(--card-border)', paddingBottom: '8px' }}>
-                最近の入室記録 (最新5件)
-              </h3>
-              {logs.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', padding: '20px 0' }}>データがありません</p>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {logs.slice(0, 5).map(log => (
-                    <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', paddingBottom: '8px', borderBottom: '1px solid rgba(31, 41, 55, 0.1)' }}>
-                      <div>
-                        <span style={{ fontWeight: 600 }}>{log.name}</span>
-                        <span style={{ color: 'var(--text-muted)', marginLeft: '8px', fontSize: '0.8rem' }}>
-                          {log.department}
-                        </span>
-                      </div>
-                      <span style={{ color: 'var(--primary)', fontSize: '0.85rem' }}>
-                        {new Date(log.checked_in_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <StatsTab
+          todayCount={todayCount}
+          todayUniqueUsers={todayUniqueUsers}
+          totalRegisteredCaches={totalRegisteredCaches}
+          logs={logs}
+          todayLogs={todayLogs}
+          todayStr={todayStr}
+        />
       )}
 
-      {/* タブ4: 学科・クラス管理 */}
       {activeTab === 'departments' && !loading && (
-        <div className="section" style={{ justifyContent: 'flex-start', alignItems: 'stretch' }}>
-
-          {/* 学科の新規追加フォーム */}
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', maxWidth: '480px' }}>
-            <input
-              type="text"
-              className="input-text"
-              placeholder="新しい学科名を入力"
-              value={newDeptName}
-              onChange={(e) => setNewDeptName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddDepartment()}
-              style={{ flex: 2 }}
-            />
-            <select
-              className="select-box"
-              value={newDeptYears}
-              onChange={(e) => setNewDeptYears(Number(e.target.value))}
-              style={{ flex: 1 }}
-            >
-              {[1, 2, 3, 4].map(y => (
-                <option key={y} value={y}>{y}年制</option>
-              ))}
-            </select>
-            <button
-              className="btn btn-primary"
-              style={{ width: 'auto', padding: '0 20px' }}
-              onClick={handleAddDepartment}
-              disabled={actionLoading || !newDeptName.trim()}
-            >
-              追加
-            </button>
-          </div>
-
-          {/* 学科一覧カード */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {departments.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>学科が登録されていません。</p>
-            ) : (
-              departments.map((dept) => (
-                <div
-                  key={dept.id}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.94)',
-                    border: '1px solid var(--card-border)',
-                    borderRadius: '16px',
-                    padding: '20px'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>{dept.name}</h3>
-                      <select
-                        className="select-box"
-                        value={dept.years}
-                        onChange={(e) => handleChangeYears(dept.id, Number(e.target.value))}
-                        disabled={actionLoading}
-                        style={{ width: 'auto', padding: '4px 8px', fontSize: '0.85rem' }}
-                      >
-                        {[1, 2, 3, 4].map(y => (
-                          <option key={y} value={y}>{y}年制</option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      className="btn-sm btn-danger-sm"
-                      onClick={() => handleDeleteDepartment(dept.id, dept.name)}
-                      disabled={actionLoading}
-                    >
-                      <Trash2 size={14} />
-                      学科を削除
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
-                    {dept.classes.length === 0 ? (
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>クラス未登録</span>
-                    ) : (
-                      dept.classes.map((cls) => (
-                        <span
-                          key={`${cls.grade}-${cls.class_name}`}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '4px 10px',
-                            borderRadius: '9999px',
-                            background: 'rgba(255, 255, 255, 0.94)',
-                            border: '1px solid var(--primary)',
-                            fontSize: '0.85rem'
-                          }}
-                        >
-                          {cls.grade}年 {cls.class_name}
-                          <button
-                            onClick={() => handleDeleteClass(dept.id, cls)}
-                            disabled={actionLoading}
-                            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}
-                            title="このクラスを削除"
-                          >
-                            <X size={12} />
-                          </button>
-                        </span>
-                      ))
-                    )}
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', maxWidth: '320px', flexWrap: 'wrap' }}>
-                    <select
-                      className="select-box"
-                      value={newClassInputs[dept.id]?.grade || '1'}
-                      onChange={(e) =>
-                        setNewClassInputs(prev => ({
-                          ...prev,
-                          [dept.id]: {
-                            grade: e.target.value,
-                            className: prev[dept.id]?.className || '',
-                          },
-                        }))
-                      }
-                      disabled={actionLoading}
-                      style={{ width: '80px' }}
-                    >
-                      {Array.from({ length: dept.years }, (_, index) => index + 1).map((year) => (
-                        <option key={year} value={String(year)}>{year}年</option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      className="input-text"
-                      placeholder="例: A組"
-                      maxLength={10}
-                      value={newClassInputs[dept.id]?.className || ''}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setNewClassInputs(prev => ({
-                          ...prev,
-                          [dept.id]: {
-                            grade: prev[dept.id]?.grade || '1',
-                            className: value,
-                          },
-                        }));
-                      }}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddClass(dept.id)}
-                    />
-                    <button
-                      className="btn btn-secondary"
-                      style={{ width: 'auto', padding: '0 16px' }}
-                      onClick={() => handleAddClass(dept.id)}
-                      disabled={actionLoading || !(newClassInputs[dept.id]?.className || '').trim()}
-                    >
-                      クラス追加
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        <DepartmentsTab
+          departments={departments}
+          newDeptName={newDeptName}
+          setNewDeptName={setNewDeptName}
+          newDeptYears={newDeptYears}
+          setNewDeptYears={setNewDeptYears}
+          actionLoading={actionLoading}
+          handleAddDepartment={handleAddDepartment}
+          handleChangeYears={handleChangeYears}
+          handleDeleteDepartment={handleDeleteDepartment}
+          newClassInputs={newClassInputs}
+          setNewClassInputs={setNewClassInputs}
+          handleAddClass={handleAddClass}
+          handleDeleteClass={handleDeleteClass}
+        />
       )}
 
-
-
-      {/* ローディングスピナー */}
       {loading && (
-        <div className="section" style={{ minHeight: '300px' }}>
+        <div className="section admin-loading-section">
           <Loader2 className="spinner" size={40} />
-          <p style={{ marginTop: '16px', color: 'var(--text-muted)' }}>データを読み込んでいます...</p>
+          <p className="admin-loading-text">データを読み込んでいます...</p>
         </div>
       )}
 
-      {/* 編集ポップアップモーダル */}
-      {editingCache && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 600 }}>学生情報の編集</h3>
-              <button
-                onClick={() => setEditingCache(null)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleUpdateCache}>
-              <div className="form-group" style={{ maxWidth: '100%' }}>
-                <label className="label">学籍番号 (変更不可)</label>
-                <input
-                  type="text"
-                  className="input-text"
-                  value={editingCache.student_id}
-                  disabled
-                  style={{ opacity: 0.6, cursor: 'not-allowed' }}
-                />
-              </div>
-
-              <div className="form-group" style={{ maxWidth: '100%' }}>
-                <label className="label">氏名</label>
-                <input
-                  type="text"
-                  className="input-text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '16px', width: '100%' }}>
-                <div className="form-group" style={{ flex: 1, maxWidth: '100%' }}>
-                  <label className="label">学科</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    value={editDept}
-                    onChange={(e) => setEditDept(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="form-group" style={{ flex: 1, maxWidth: '100%' }}>
-                  <label className="label">学年</label>
-                  <input
-                    type="text"
-                    className="input-text"
-                    value={editGrade}
-                    onChange={(e) => setEditGrade(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="btn-group" style={{ maxWidth: '100%', marginTop: '30px' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ flex: 1 }}
-                  onClick={() => setEditingCache(null)}
-                  disabled={actionLoading}
-                >
-                  キャンセル
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  style={{ flex: 1 }}
-                  disabled={actionLoading}
-                >
-                  {actionLoading ? <Loader2 className="spinner" size={18} /> : '更新する'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <EditCacheModal
+        editingCache={editingCache}
+        setEditingCache={setEditingCache}
+        handleUpdateCache={handleUpdateCache}
+        editName={editName}
+        setEditName={setEditName}
+        editDept={editDept}
+        setEditDept={setEditDept}
+        editGrade={editGrade}
+        setEditGrade={setEditGrade}
+        actionLoading={actionLoading}
+      />
     </div>
   );
 }
+
+
