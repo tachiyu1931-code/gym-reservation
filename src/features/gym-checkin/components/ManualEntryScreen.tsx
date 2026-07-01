@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-﻿import { Keyboard, Loader2 } from 'lucide-react';
+import { Keyboard, Loader2 } from 'lucide-react';
 import { cleanName } from '@/utils/cleansing';
 import { detectUserType } from '@/utils/detectUserType';
 

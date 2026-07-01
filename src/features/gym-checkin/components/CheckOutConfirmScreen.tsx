@@ -1,8 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-﻿import { Loader2 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
 
 export function CheckOutConfirmScreen(props: any) {
   const { t, lang, checkoutLog, name, loading, handleReset, executeCheckOut, formatDisplayName } = props;
+
+  const checkoutButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    checkoutButtonRef.current?.focus();
+  }, []);
 
   return (
     <div className="section confirm-section">
@@ -17,7 +24,12 @@ export function CheckOutConfirmScreen(props: any) {
         <button className="btn btn-secondary button-fill" onClick={handleReset} disabled={loading}>
           {t.btnCancel}
         </button>
-        <button className="btn btn-primary button-fill" onClick={() => executeCheckOut()} disabled={loading}>
+        <button
+          ref={checkoutButtonRef}
+          className="btn btn-primary button-fill"
+          onClick={() => executeCheckOut()}
+          disabled={loading}
+        >
           {loading ? <Loader2 className="spinner" size={20} /> : t.btnCheckout}
         </button>
       </div>

@@ -1,9 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-﻿import { Loader2 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
 
 export function CheckInConfirmScreen(props: any) {
   const { t, name, userType, department, grade, className, gradeLabelKeys, loading, handleReset, handleCheckInOrOut, formatDisplayName } = props;
+  const checkinButtonRef = useRef<HTMLButtonElement>(null);
 
+  useEffect(() => {
+    checkinButtonRef.current?.focus();
+  }, []);
   return (
     <div className="section confirm-section">
       <h2 className="confirm-subtitle">{t.messagesOfSupport}</h2>

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-﻿import { CheckCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, Loader2 } from 'lucide-react';
 
 export function SuccessScreen(props: any) {
   const { t, successType, scannedName, successMessage, successStats, successDuration, checkoutNotice, formatMessage, formatDisplayName } = props;
