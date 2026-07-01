@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-﻿import { BarChart3, Camera, Keyboard, Loader2 } from 'lucide-react';
+import { BarChart3, Camera, Keyboard, Loader2 } from 'lucide-react';
 import { detectUserType } from '@/utils/detectUserType';
 
 export function WelcomeScreen(props: any) {

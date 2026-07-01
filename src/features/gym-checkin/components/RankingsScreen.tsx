@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-﻿import { ArrowLeft, Trophy } from 'lucide-react';
+import { ArrowLeft, Trophy } from 'lucide-react';
 
 export function RankingsScreen(props: any) {
   const { t, rankings, formatMessage, handleReset } = props;
