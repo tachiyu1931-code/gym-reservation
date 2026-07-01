@@ -547,12 +547,15 @@ export default function AdminDashboard() {
         editingCache={editingCache}
         setEditingCache={setEditingCache}
         handleUpdateCache={handleUpdateCache}
+        departments={departments}
         editName={editName}
         setEditName={setEditName}
         editDept={editDept}
         setEditDept={setEditDept}
         editGrade={editGrade}
         setEditGrade={setEditGrade}
+        editClassName={editClassName}
+        setEditClassName={setEditClassName}
         actionLoading={actionLoading}
       />
     </div>

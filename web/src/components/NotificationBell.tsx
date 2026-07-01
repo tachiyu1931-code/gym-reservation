@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell, Check, Loader2 } from 'lucide-react';
 import {
   getNotifications,
@@ -10,7 +10,6 @@ import {
 
 export default function NotificationBell() {
   const [unreadNotifications, setUnreadNotifications] = useState<AdminNotification[]>([]);
-  const [readNotifications, setReadNotifications] = useState<AdminNotification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
@@ -19,15 +18,14 @@ export default function NotificationBell() {
   const unreadCount = unreadNotifications.length;
   const badgeLabel = unreadCount > 99 ? '99+' : String(unreadCount);
 
-  const splitNotifications = useCallback((notifications: AdminNotification[]) => {
+  const setOnlyUnreadNotifications = useCallback((notifications: AdminNotification[]) => {
     setUnreadNotifications(notifications.filter((notification) => !notification.is_read));
-    setReadNotifications(notifications.filter((notification) => notification.is_read));
   }, []);
 
   const refreshNotifications = useCallback(async () => {
     const notifications = await getNotifications();
-    splitNotifications(notifications);
-  }, [splitNotifications]);
+    setOnlyUnreadNotifications(notifications);
+  }, [setOnlyUnreadNotifications]);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,7 +34,7 @@ export default function NotificationBell() {
       setIsLoading(true);
       try {
         const notifications = await getNotifications();
-        if (!cancelled) splitNotifications(notifications);
+        if (!cancelled) setOnlyUnreadNotifications(notifications);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -53,7 +51,7 @@ export default function NotificationBell() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [refreshNotifications, splitNotifications]);
+  }, [refreshNotifications, setOnlyUnreadNotifications]);
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent) => {
@@ -72,22 +70,11 @@ export default function NotificationBell() {
     setConfirmingId(notification.id);
     try {
       await markNotificationRead(notification.id);
-      const readAt = new Date().toISOString();
-      const updated = { ...notification, is_read: true, read_at: readAt };
       setUnreadNotifications((current) => current.filter((item) => item.id !== notification.id));
-      setReadNotifications((current) => [updated, ...current]);
     } finally {
       setConfirmingId(null);
     }
   };
-
-  const sections = useMemo(
-    () => [
-      { title: '未読', notifications: unreadNotifications, unread: true },
-      { title: '既読', notifications: readNotifications, unread: false },
-    ],
-    [readNotifications, unreadNotifications]
-  );
 
   return (
     <div className="notification-bell" ref={rootRef}>
@@ -114,43 +101,31 @@ export default function NotificationBell() {
               <Loader2 className="spinner" size={18} />
               <span>読み込み中...</span>
             </div>
-          ) : unreadNotifications.length + readNotifications.length === 0 ? (
-            <div className="notification-empty">通知はありません</div>
+          ) : unreadNotifications.length === 0 ? (
+            <div className="notification-empty">未読通知はありません</div>
           ) : (
             <div className="notification-list">
-              {sections.map((section) => (
-                <div className="notification-section" key={section.title}>
-                  <div className="notification-section-title">{section.title}</div>
-                  {section.notifications.length === 0 ? (
-                    <div className="notification-section-empty">該当なし</div>
-                  ) : (
-                    section.notifications.map((notification) => (
-                      <div
-                        className={`notification-row ${section.unread ? 'unread' : 'read'}`}
-                        key={notification.id}
-                      >
-                        <div className="notification-row-main">
-                          <span className="notification-student-number">{notification.student_number}</span>
-                          <span>{notification.department}</span>
-                          <span>{notification.grade}</span>
-                          <span>{notification.name}</span>
-                        </div>
-                        <button
-                          type="button"
-                          className="notification-confirm-button"
-                          onClick={() => handleMarkRead(notification)}
-                          disabled={!section.unread || confirmingId === notification.id}
-                        >
-                          {confirmingId === notification.id ? (
-                            <Loader2 className="spinner" size={14} />
-                          ) : (
-                            <Check size={14} />
-                          )}
-                          {section.unread ? '確認' : '確認済み'}
-                        </button>
-                      </div>
-                    ))
-                  )}
+              {unreadNotifications.map((notification) => (
+                <div className="notification-row unread" key={notification.id}>
+                  <div className="notification-row-main">
+                    <span className="notification-student-number">{notification.student_number}</span>
+                    <span>{notification.department}</span>
+                    <span>{notification.grade}</span>
+                    <span>{notification.name}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="notification-confirm-button"
+                    onClick={() => handleMarkRead(notification)}
+                    disabled={confirmingId === notification.id}
+                  >
+                    {confirmingId === notification.id ? (
+                      <Loader2 className="spinner" size={14} />
+                    ) : (
+                      <Check size={14} />
+                    )}
+                    確認
+                  </button>
                 </div>
               ))}
             </div>
