@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 
 export function CheckInConfirmScreen(props: any) {
-  const { t, name, userType, department, grade, className, gradeLabelKeys, loading, handleReset, handleCheckInOrOut, formatDisplayName } = props;
+  const { t, name, userType, department, grade, className, gradeLabelKeys, loading, handleReset, handleCheckInOrOut, adjustedCheckoutNotice, formatDisplayName } = props;
   const checkinButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -18,7 +18,13 @@ export function CheckInConfirmScreen(props: any) {
           {department} / {gradeLabelKeys[grade] ? t[gradeLabelKeys[grade]] : grade} / {className}
         </p>
       )}
-      <p className="confirm-message">{t.welcomeMessage}</p>
+      {adjustedCheckoutNotice ? (
+        <p className="confirm-message" style={{ color: 'var(--accent)', marginBottom: 12 }}>
+          {adjustedCheckoutNotice}
+        </p>
+      ) : (
+        <p className="confirm-message">{t.welcomeMessage}</p>
+      )}
       <div className="btn-group">
         <button className="btn btn-secondary button-fill" onClick={handleReset} disabled={loading}>
           {t.btnCancel}
