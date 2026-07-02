@@ -2,7 +2,7 @@
 import { BarChart3, History, Settings, Trash2, Users } from 'lucide-react';
 
 export function AdminTabs(props: any) {
-  const { activeTab, setActiveTab, setSearchQuery, setFilterDept, setFilterGrade, setFilterDate, deletedLogs, deletedCaches } = props;
+  const { activeTab, setActiveTab, setSearchQuery, setFilterDept, setFilterGrade, setFilterDate, deletedLogs, deletedCaches, deletedDepartments = [] } = props;
   const resetFilters = () => {
     setSearchQuery('');
     setFilterDept('');
@@ -31,8 +31,9 @@ export function AdminTabs(props: any) {
       <button className={'tab-btn ' + (activeTab === 'trash' ? 'active' : '')} onClick={() => { setActiveTab('trash'); resetFilters(); }}>
         <Trash2 size={16} />
         ゴミ箱
-        {(deletedLogs.length + deletedCaches.length) > 0 && <span className="tab-count">({deletedLogs.length + deletedCaches.length})</span>}
+        {(deletedLogs.length + deletedCaches.length + deletedDepartments.length) > 0 && <span className="tab-count">({deletedLogs.length + deletedCaches.length + deletedDepartments.length})</span>}
       </button>
     </div>
   );
 }
+
