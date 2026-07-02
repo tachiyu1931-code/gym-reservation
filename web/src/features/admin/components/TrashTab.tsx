@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { History, RefreshCw, Trash2, Users } from 'lucide-react';
+import { History, RefreshCw, Settings, Trash2, Users } from 'lucide-react';
 
 export function TrashTab(props: any) {
-  const { deletedLogs, deletedCaches, handleRestoreLog, handlePermanentDeleteLog, handleRestoreCache, handlePermanentDeleteCache, actionLoading } = props;
+  const { deletedLogs, deletedCaches, deletedDepartments, handleRestoreLog, handlePermanentDeleteLog, handleRestoreCache, handlePermanentDeleteCache, handleRestoreDepartment, handlePermanentDeleteDepartment, actionLoading } = props;
 
   return (
         <div className="section" style={{ justifyContent: 'flex-start', alignItems: 'stretch', gap: '24px' }}>
@@ -30,8 +30,60 @@ export function TrashTab(props: any) {
                 <span className="stat-label">削除済み利用者キャッシュ</span>
               </div>
             </div>
+            <div className="stat-card">
+              <div className="stat-icon"><Settings size={24} /></div>
+              <div className="stat-info">
+                <span className="stat-value">{deletedDepartments.length} 件</span>
+                <span className="stat-label">削除済み学科</span>
+              </div>
+            </div>
           </div>
 
+          <div>
+            <h3 style={{ fontSize: '1.05rem', marginBottom: '12px' }}>学科</h3>
+            <div className="table-wrapper">
+              {deletedDepartments.length === 0 ? (
+                <div className="empty-state">
+                  <Settings size={48} className="empty-state-icon" />
+                  <p>削除済みの学科はありません</p>
+                </div>
+              ) : (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>削除日時</th>
+                      <th>学科名</th>
+                      <th>修業年限</th>
+                      <th>クラス</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deletedDepartments.map((dept: any) => (
+                      <tr key={dept.id}>
+                        <td style={{ color: 'var(--text-muted)' }}>{dept.deleted_at ? new Date(dept.deleted_at).toLocaleString('ja-JP') : '-'}</td>
+                        <td>{dept.name}</td>
+                        <td>{dept.years}年制</td>
+                        <td>{dept.classes?.length ? dept.classes.map((cls: any) => `${cls.grade}年 ${cls.class_name}`).join('、') : '-'}</td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <button className="btn-sm btn-edit-sm" onClick={() => handleRestoreDepartment(dept.id)} disabled={actionLoading}>
+                              <RefreshCw size={14} />
+                              復元
+                            </button>
+                            <button className="btn-sm btn-danger-sm" onClick={() => handlePermanentDeleteDepartment(dept.id, dept.name)} disabled={actionLoading}>
+                              <Trash2 size={14} />
+                              完全削除
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
           <div>
             <h3 style={{ fontSize: '1.05rem', marginBottom: '12px' }}>利用ログ</h3>
             <div className="table-wrapper">
@@ -134,3 +186,5 @@ export function TrashTab(props: any) {
         </div>
   );
 }
+
+
