@@ -75,6 +75,8 @@ type UsageLogLike = {
   is_staff?: boolean;
   checked_in_at: string;
   usage_duration_minutes?: number | null;
+  is_adjusted?: boolean;
+  is_notified?: boolean;
 };
 
 export default function GymCheckIn() {
@@ -148,6 +150,7 @@ export default function GymCheckIn() {
   const [ocrResult, setOcrResult] = useState('');
   const [checkoutLog, setCheckoutLog] = useState<UsageLogLike | null>(null);
   const [checkoutNotice, setCheckoutNotice] = useState('');
+  const [adjustedCheckoutNotice, setAdjustedCheckoutNotice] = useState('');
   const [successType, setSuccessType] = useState<'checkin' | 'checkout'>('checkin');
   const [successStats, setSuccessStats] = useState<UsageStatsLike | null>(null);
   const [successDuration, setSuccessDuration] = useState<number | null>(null);
@@ -160,6 +163,22 @@ export default function GymCheckIn() {
 
   const timeoutTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recentInputRef = useRef<{ id: string; at: number } | null>(null);
+
+  const markAdjustedNoticeAsSeen = useCallback(async (logId: number) => {
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ log_id: logId, is_notified: true }),
+      });
+
+      if (!res.ok) {
+        console.error('Failed to update adjusted notice flag');
+      }
+    } catch (err) {
+      console.error('Failed to update adjusted notice flag', err);
+    }
+  }, []);
 
   const loadDepartmentMaster = useCallback(async () => {
     try {
@@ -295,6 +314,7 @@ export default function GymCheckIn() {
     setOcrResult('');
     setCheckoutLog(null);
     setCheckoutNotice('');
+    setAdjustedCheckoutNotice('');
     setSuccessType('checkin');
     setSuccessStats(null);
     setSuccessDuration(null);
@@ -378,12 +398,27 @@ export default function GymCheckIn() {
       if (checkoutData?.found && checkoutData.log) {
         const log = checkoutData.log as UsageLogLike;
         setCheckoutLog(log);
+        setAdjustedCheckoutNotice('');
         setName(log.name || '');
         setDepartment(log.department || '');
         setGrade(log.grade || '');
         setClassName(log.class_name || '');
         setUserType(log.is_staff ? 'staff' : detectedType);
         setScreen('checkout-confirm');
+        return;
+      }
+
+      if (checkoutData?.adjusted_log) {
+        const log = checkoutData.adjusted_log as UsageLogLike;
+        setCheckoutLog(null);
+        setAdjustedCheckoutNotice(t.adjustedCheckoutNotice);
+        void markAdjustedNoticeAsSeen(log.id);
+        setName(log.name || '');
+        setDepartment(log.department || '');
+        setGrade(log.grade || '');
+        setClassName(log.class_name || '');
+        setUserType(log.is_staff ? 'staff' : detectedType);
+        setScreen('checkin-confirm');
         return;
       }
 
@@ -545,6 +580,7 @@ export default function GymCheckIn() {
           if (result.status === 'active' && result.log) {
             const log = result.log;
             setCheckoutLog(log);
+            setAdjustedCheckoutNotice('');
             setName(log.name || '');
             setDepartment(log.department || '');
             setGrade(log.grade || '');
@@ -711,6 +747,7 @@ export default function GymCheckIn() {
           className={className}
           gradeLabelKeys={GRADE_LABEL_KEYS}
           loading={loading}
+          adjustedCheckoutNotice={adjustedCheckoutNotice}
           handleReset={handleReset}
           handleCheckInOrOut={handleCheckInOrOut}
           formatDisplayName={formatDisplayName}

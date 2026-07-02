@@ -4,6 +4,7 @@ import { isUseMock, mockLogs, mockNotifications } from '@/lib/mockDb';
 import { addUsageStats, calculateUsageMinutes } from '@/lib/usageStats';
 
 const AUTO_CHECKOUT_HOURS = 15;
+const AUTO_ADJUSTED_MINUTES = 30;
 
 type AutoCheckoutNotificationLog = {
   id: number;
@@ -82,7 +83,9 @@ async function runAutoCheckout() {
         const minutes = calculateUsageMinutes(log.checked_in_at, checkedOutAt);
         log.checked_out_at = checkedOutAt;
         log.auto_checked_out = true;
-        log.usage_duration_minutes = minutes;
+        log.usage_duration_minutes = AUTO_ADJUSTED_MINUTES;
+        log.is_adjusted = true;
+        log.is_notified = false;
         log.admin_confirmed = false;
         addMockAutoCheckoutNotification(log);
         addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
@@ -103,13 +106,14 @@ async function runAutoCheckout() {
 
   for (const log of oldLogs ?? []) {
     const checkedOutAt = new Date(new Date(log.checked_in_at).getTime() + AUTO_CHECKOUT_HOURS * 3600000).toISOString();
-    const minutes = calculateUsageMinutes(log.checked_in_at, checkedOutAt);
     const { error: updateError } = await supabase
       .from('usage_logs')
       .update({
         checked_out_at: checkedOutAt,
-        usage_duration_minutes: minutes,
+        usage_duration_minutes: AUTO_ADJUSTED_MINUTES,
         auto_checked_out: true,
+        is_adjusted: true,
+        is_notified: false,
         admin_confirmed: false,
       })
       .eq('id', log.id)
@@ -119,7 +123,7 @@ async function runAutoCheckout() {
 
     if (!updateError) {
       await createAutoCheckoutNotification(log);
-      await addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
+      await addUsageStats(log.student_id, AUTO_ADJUSTED_MINUTES, new Date(checkedOutAt));
     }
   }
 }
@@ -142,7 +146,14 @@ export async function GET(request: Request) {
     const activeLog = mockLogs.find(
       l => l.student_id === student_id && !l.checked_out_at && !l.deleted_at
     );
-    return NextResponse.json({ found: !!activeLog, log: activeLog || null });
+    if (activeLog) {
+      return NextResponse.json({ found: true, log: activeLog, adjusted_log: null });
+    }
+
+    const adjustedLog = mockLogs.find(
+      l => l.student_id === student_id && l.is_adjusted && !l.is_notified && !l.deleted_at
+    );
+    return NextResponse.json({ found: false, log: null, adjusted_log: adjustedLog || null });
   }
 
   try {
@@ -160,9 +171,61 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ found: !!data, log: data || null });
+    if (data) {
+      return NextResponse.json({ found: true, log: data, adjusted_log: null });
+    }
+
+    const { data: adjustedLogs, error: adjustedError } = await supabase
+      .from('usage_logs')
+      .select('id, student_id, name, department, grade, class_name, is_staff, checked_in_at, checked_out_at')
+      .eq('student_id', student_id)
+      .eq('is_adjusted', true)
+      .eq('is_notified', false)
+      .is('deleted_at', null)
+      .order('checked_in_at', { ascending: false })
+      .limit(1);
+
+    if (adjustedError) {
+      console.error('Failed to load adjusted checkout notice:', adjustedError);
+      return NextResponse.json({ found: false, log: null, adjusted_log: null });
+    }
+
+    return NextResponse.json({ found: false, log: null, adjusted_log: adjustedLogs?.[0] ?? null });
   } catch (error: unknown) {
     console.error('Database error in /api/checkout:', error);
+    return NextResponse.json(
+      { error: 'Internal Server Error', details: (error as Error).message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const { log_id, is_notified } = await request.json() as { log_id?: number; is_notified?: boolean };
+
+    if (!log_id || typeof is_notified !== 'boolean') {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    if (isUseMock()) {
+      const index = mockLogs.findIndex(l => l.id === log_id);
+      if (index === -1) return NextResponse.json({ error: 'Log not found' }, { status: 404 });
+      mockLogs[index].is_notified = is_notified;
+      return NextResponse.json({ success: true });
+    }
+
+    const { error } = await supabase
+      .from('usage_logs')
+      .update({ is_notified })
+      .eq('id', log_id)
+      .is('deleted_at', null);
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    console.error('Database error in /api/checkout PATCH:', error);
     return NextResponse.json(
       { error: 'Internal Server Error', details: (error as Error).message },
       { status: 500 }

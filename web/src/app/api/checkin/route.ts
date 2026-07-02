@@ -70,6 +70,8 @@ export async function POST(request: Request) {
         checked_out_at: null,
         auto_checked_out: false,
         usage_duration_minutes: null,
+        is_adjusted: false,
+        is_notified: false,
         admin_confirmed: false,
         created_at: new Date().toISOString(),
         deleted_at: null,
