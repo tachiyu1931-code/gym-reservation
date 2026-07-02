@@ -212,13 +212,14 @@ export function isUseMock(): boolean {
 // ==========================================
 
 /** クラスエントリ（学年 + クラス名） */
-export type DeptClass = { grade: number; class_name: string; sort_order: number };
+export type DeptClass = { grade: number; class_name: string; sort_order: number; deleted_at?: string | null };
 
 export type MockDepartment = {
   id: number;
   name: string;
   classes: DeptClass[];
   years_count: number;
+  deleted_at?: string | null;
 };
 
 declare global {
@@ -313,3 +314,4 @@ if (!globalForDept.mockDepartments) {
 }
 
 export const mockDepartments = globalForDept.mockDepartments;
+

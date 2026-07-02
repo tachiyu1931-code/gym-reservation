@@ -1,6 +1,6 @@
 -- ==========================================
 -- ジム利用記録システム Supabase スキーマ定義
--- 最終更新: 2026-06-25
+-- 最終更新: 2026-07-02
 -- ==========================================
 
 -- ==========================================
@@ -24,8 +24,11 @@ CREATE TABLE IF NOT EXISTS departments_master (
     years_count SMALLINT    NOT NULL DEFAULT 2,
     sort_order SMALLINT    NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ DEFAULT NULL
 );
+
+ALTER TABLE departments_master ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
 
 -- updated_at 自動更新トリガー
 DROP TRIGGER IF EXISTS update_departments_master_modtime ON departments_master;
@@ -33,6 +36,10 @@ CREATE TRIGGER update_departments_master_modtime
     BEFORE UPDATE ON departments_master
     FOR EACH ROW
     EXECUTE PROCEDURE update_modified_column();
+
+CREATE INDEX IF NOT EXISTS idx_departments_master_active
+    ON departments_master(sort_order, name)
+    WHERE deleted_at IS NULL;
 
 
 -- ==========================================
@@ -59,11 +66,18 @@ CREATE TABLE IF NOT EXISTS department_classes (
     class_name    VARCHAR(50) NOT NULL,
     sort_order    SMALLINT NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at    TIMESTAMPTZ DEFAULT NULL,
     UNIQUE(department_id, grade, class_name)
 );
 
+ALTER TABLE department_classes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ DEFAULT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_department_classes_dept_grade
     ON department_classes(department_id, grade);
+
+CREATE INDEX IF NOT EXISTS idx_department_classes_active
+    ON department_classes(department_id, grade, sort_order)
+    WHERE deleted_at IS NULL;
 
 
 -- ==========================================
@@ -254,7 +268,7 @@ ON CONFLICT DO NOTHING;-- ==========================================
 --    チェックイン後 15時間を超えた在室中レコードを自動退室
 -- ==========================================
 CREATE OR REPLACE FUNCTION auto_checkout_old_logs(auto_checkout_time_threshold TIMESTAMPTZ)
-RETURNS VOID AS $
+RETURNS VOID AS $$
 BEGIN
     WITH updated_logs AS (
         UPDATE usage_logs
@@ -290,7 +304,7 @@ BEGIN
     FROM updated_logs
     ON CONFLICT DO NOTHING;
 END;
-$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 
 -- ==========================================
@@ -305,6 +319,17 @@ BEGIN
       AND deleted_at < NOW() - INTERVAL '30 days';
 
     DELETE FROM users_cache
+    WHERE deleted_at IS NOT NULL
+      AND deleted_at < NOW() - INTERVAL '30 days';
+
+    DELETE FROM department_classes
+    WHERE department_id IN (
+        SELECT id FROM departments_master
+        WHERE deleted_at IS NOT NULL
+          AND deleted_at < NOW() - INTERVAL '30 days'
+    );
+
+    DELETE FROM departments_master
     WHERE deleted_at IS NOT NULL
       AND deleted_at < NOW() - INTERVAL '30 days';
 END;
@@ -341,3 +366,6 @@ BEGIN
     WHERE deleted_at IS NULL;
 END;
 $$ LANGUAGE plpgsql;
+
+
+

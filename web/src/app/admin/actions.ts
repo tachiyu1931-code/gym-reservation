@@ -157,7 +157,7 @@ export type AdminNotification = {
   read_at?: string | null;
 };
 
-export type DepartmentClass = { grade: number; class_name: string; sort_order: number };
+export type DepartmentClass = { grade: number; class_name: string; sort_order: number; deleted_at?: string | null };
 
 export type DepartmentMaster = {
   id: number;
@@ -166,17 +166,21 @@ export type DepartmentMaster = {
   classes: DepartmentClass[];
 };
 
+export type DeletedDepartmentMaster = DepartmentMaster & {
+  deleted_at: string | null;
+};
+
 // ==========================================
 // 学科マスタ
 // ==========================================
 
 export async function getDepartmentMasters(): Promise<DepartmentMaster[]> {
   if (isUseMock()) {
-    return mockDepartments.map((d) => ({
+    return mockDepartments.filter((d) => !d.deleted_at).map((d) => ({
       id: d.id,
       name: d.name,
       years: d.years_count,
-      classes: [...d.classes].sort((a, b) =>
+      classes: d.classes.filter((c) => !c.deleted_at).sort((a, b) =>
         a.grade !== b.grade ? a.grade - b.grade : a.class_name.localeCompare(b.class_name)
       ),
     }));
@@ -184,7 +188,8 @@ export async function getDepartmentMasters(): Promise<DepartmentMaster[]> {
 
   const { data, error } = await supabase
     .from('departments_master')
-    .select('id, name, years_count, sort_order, department_classes(grade, class_name, sort_order)')
+    .select('id, name, years_count, sort_order, department_classes(grade, class_name, sort_order, deleted_at)')
+    .is('deleted_at', null)
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true });
   if (error) throw error;
@@ -194,10 +199,12 @@ export async function getDepartmentMasters(): Promise<DepartmentMaster[]> {
     name: dept.name,
     years: dept.years_count,
     classes: (dept.department_classes ?? [])
-      .map((c: { grade: number; class_name: string; sort_order: number }) => ({
+      .filter((c: { deleted_at?: string | null }) => !c.deleted_at)
+      .map((c: { grade: number; class_name: string; sort_order: number; deleted_at?: string | null }) => ({
         grade: c.grade,
         class_name: c.class_name,
         sort_order: c.sort_order,
+        deleted_at: c.deleted_at,
       }))
       .sort((a: DepartmentClass, b: DepartmentClass) =>
         a.grade !== b.grade
@@ -236,20 +243,135 @@ export async function addDepartment(name: string, years: number) {
 }
 
 export async function deleteDepartment(id: number) {
+  const deletedAt = new Date().toISOString();
+
   if (isUseMock()) {
-    const index = mockDepartments.findIndex((d) => d.id === id);
-    if (index >= 0) mockDepartments.splice(index, 1);
+    const dept = mockDepartments.find((d) => d.id === id && !d.deleted_at);
+    if (dept) {
+      dept.deleted_at = deletedAt;
+      dept.classes = dept.classes.map((cls) => ({ ...cls, deleted_at: deletedAt }));
+    }
     revalidatePath('/');
     revalidatePath('/admin');
     return;
   }
 
-  const { error } = await supabase.from('departments_master').delete().eq('id', id);
+  const { error: classError } = await supabase
+    .from('department_classes')
+    .update({ deleted_at: deletedAt })
+    .eq('department_id', id)
+    .is('deleted_at', null);
+  if (classError) throw classError;
+
+  const { error } = await supabase
+    .from('departments_master')
+    .update({ deleted_at: deletedAt })
+    .eq('id', id)
+    .is('deleted_at', null);
   if (error) throw error;
   revalidatePath('/');
   revalidatePath('/admin');
 }
 
+export async function restoreDepartment(id: number) {
+  if (isUseMock()) {
+    const dept = mockDepartments.find((d) => d.id === id);
+    if (dept) {
+      dept.deleted_at = null;
+      dept.classes = dept.classes.map((cls) => ({ ...cls, deleted_at: null }));
+    }
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true };
+  }
+
+  const { error: deptError } = await supabase
+    .from('departments_master')
+    .update({ deleted_at: null })
+    .eq('id', id);
+  if (deptError) throw deptError;
+
+  const { error: classError } = await supabase
+    .from('department_classes')
+    .update({ deleted_at: null })
+    .eq('department_id', id);
+  if (classError) throw classError;
+
+  revalidatePath('/');
+  revalidatePath('/admin');
+  return { success: true };
+}
+
+export async function permanentDeleteDepartment(id: number) {
+  if (isUseMock()) {
+    const index = mockDepartments.findIndex((d) => d.id === id);
+    if (index >= 0) mockDepartments.splice(index, 1);
+    revalidatePath('/');
+    revalidatePath('/admin');
+    return { success: true };
+  }
+
+  const { error: classError } = await supabase
+    .from('department_classes')
+    .delete()
+    .eq('department_id', id);
+  if (classError) throw classError;
+
+  const { error } = await supabase
+    .from('departments_master')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+
+  revalidatePath('/');
+  revalidatePath('/admin');
+  return { success: true };
+}
+
+export async function getDeletedDepartments(): Promise<DeletedDepartmentMaster[]> {
+  if (isUseMock()) {
+    return mockDepartments
+      .filter((d) => !!d.deleted_at)
+      .sort((a, b) => new Date(b.deleted_at ?? 0).getTime() - new Date(a.deleted_at ?? 0).getTime())
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        years: d.years_count,
+        deleted_at: d.deleted_at ?? null,
+        classes: [...d.classes].sort((a, b) =>
+          a.grade !== b.grade ? a.grade - b.grade : a.class_name.localeCompare(b.class_name)
+        ),
+      }));
+  }
+
+  const { data, error } = await supabase
+    .from('departments_master')
+    .select('id, name, years_count, sort_order, deleted_at, department_classes(grade, class_name, sort_order, deleted_at)')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+  if (error) throw error;
+
+  return (data ?? []).map((dept) => ({
+    id: dept.id,
+    name: dept.name,
+    years: dept.years_count,
+    deleted_at: dept.deleted_at,
+    classes: (dept.department_classes ?? [])
+      .map((c: { grade: number; class_name: string; sort_order: number; deleted_at?: string | null }) => ({
+        grade: c.grade,
+        class_name: c.class_name,
+        sort_order: c.sort_order,
+        deleted_at: c.deleted_at,
+      }))
+      .sort((a: DepartmentClass, b: DepartmentClass) =>
+        a.grade !== b.grade
+          ? a.grade - b.grade
+          : a.sort_order !== b.sort_order
+          ? a.sort_order - b.sort_order
+          : a.class_name.localeCompare(b.class_name)
+      ),
+  }));
+}
 export async function updateDepartmentYears(departmentId: number, years: number) {
   if (!Number.isInteger(years) || years < 1 || years > 6) {
     throw new Error('修業年限は1〜6の整数で入力してください。');
@@ -304,6 +426,7 @@ export async function addDepartmentClass(departmentId: number, grade: number, cl
     .from('departments_master')
     .select('name, years_count')
     .eq('id', departmentId)
+    .is('deleted_at', null)
     .single();
   if (deptError) throw deptError;
   if (!dept) throw new Error('学科が見つかりません。');
@@ -647,3 +770,4 @@ export async function markNotificationRead(id: number): Promise<{ success: true 
   revalidatePath('/admin');
   return { success: true };
 }
+

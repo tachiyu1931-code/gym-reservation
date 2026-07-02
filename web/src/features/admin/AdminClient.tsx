@@ -19,10 +19,14 @@ import {
   getDepartmentMasters,
   addDepartment,
   deleteDepartment,
+  restoreDepartment,
+  permanentDeleteDepartment,
+  getDeletedDepartments,
   addDepartmentClass,
   deleteDepartmentClass,
   updateDepartmentYears,
-  type DepartmentMaster
+  type DepartmentMaster,
+  type DeletedDepartmentMaster
 } from '@/app/admin/actions';
 import { normalizeDepartment } from '@/constants/departments';
 import { AdminHeader } from './components/AdminHeader';
@@ -81,6 +85,7 @@ export default function AdminDashboard() {
   // ゴミ箱用ステート
   const [deletedLogs, setDeletedLogs] = useState<UsageLog[]>([]);
   const [deletedCaches, setDeletedCaches] = useState<UserCache[]>([]);
+  const [deletedDepartments, setDeletedDepartments] = useState<DeletedDepartmentMaster[]>([]);
 
   // フィルター・検索ステート
   const [searchQuery, setSearchQuery] = useState('');
@@ -105,18 +110,20 @@ export default function AdminDashboard() {
     setLoading(true);
     setErrorMsg('');
     try {
-      const [logsData, cachesData, deptData, delLogsData, delCachesData] = await Promise.all([
+      const [logsData, cachesData, deptData, delLogsData, delCachesData, delDeptData] = await Promise.all([
         getUsageLogs() as Promise<UsageLog[]>,
         getUsersCache() as Promise<UserCache[]>,
         getDepartmentMasters(),
         getDeletedUsageLogs() as Promise<UsageLog[]>,
         getDeletedStudentCaches() as Promise<UserCache[]>,
+        getDeletedDepartments(),
       ]);
       setLogs(logsData);
       setCaches(cachesData);
       setDepartments(deptData);
       setDeletedLogs(delLogsData);
       setDeletedCaches(delCachesData);
+      setDeletedDepartments(delDeptData);
     } catch (err: any) {
       console.error('Failed to load admin data:', err);
       setErrorMsg('データの取得に失敗しました。データベースの接続を確認してください。');
@@ -224,6 +231,36 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleRestoreDepartment = async (id: number) => {
+    setActionLoading(true);
+    try {
+      await restoreDepartment(id);
+      const [updatedDepartments, updatedDeleted] = await Promise.all([
+        getDepartmentMasters(),
+        getDeletedDepartments(),
+      ]);
+      setDepartments(updatedDepartments);
+      setDeletedDepartments(updatedDeleted);
+    } catch (err) {
+      alert('復元に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePermanentDeleteDepartment = async (id: number, name: string) => {
+    if (!window.confirm(`学科「${name}」を完全に削除します。紐づくクラスも完全削除され、元に戻せません。実行しますか？`)) return;
+
+    setActionLoading(true);
+    try {
+      await permanentDeleteDepartment(id);
+      setDeletedDepartments(prev => prev.filter(dept => dept.id !== id));
+    } catch (err) {
+      alert('完全削除に失敗しました。');
+    } finally {
+      setActionLoading(false);
+    }
+  };
   // キャッシュ更新処理
   const [editClassName, setEditClassName] = useState('');
 
@@ -299,11 +336,13 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteDepartment = async (id: number, name: string) => {
-    if (!window.confirm(`学科「${name}」を削除しますか？\n紐づくクラス情報も削除されます。`)) return;
+    if (!window.confirm(`学科「${name}」をゴミ箱に移動しますか？\n紐づくクラス情報もゴミ箱に移動します。\n30日以内は復元可能です。`)) return;
     setActionLoading(true);
     try {
       await deleteDepartment(id);
       setDepartments(prev => prev.filter(d => d.id !== id));
+      const updatedDeleted = await getDeletedDepartments();
+      setDeletedDepartments(updatedDeleted);
     } catch (err) {
       alert('削除に失敗しました。');
     } finally {
@@ -450,6 +489,7 @@ export default function AdminDashboard() {
         setFilterDate={setFilterDate}
         deletedLogs={deletedLogs}
         deletedCaches={deletedCaches}
+        deletedDepartments={deletedDepartments}
       />
 
       {errorMsg && (
@@ -499,10 +539,13 @@ export default function AdminDashboard() {
         <TrashTab
           deletedLogs={deletedLogs}
           deletedCaches={deletedCaches}
+          deletedDepartments={deletedDepartments}
           handleRestoreLog={handleRestoreLog}
           handlePermanentDeleteLog={handlePermanentDeleteLog}
           handleRestoreCache={handleRestoreCache}
           handlePermanentDeleteCache={handlePermanentDeleteCache}
+          handleRestoreDepartment={handleRestoreDepartment}
+          handlePermanentDeleteDepartment={handlePermanentDeleteDepartment}
           actionLoading={actionLoading}
         />
       )}
@@ -558,5 +601,3 @@ export default function AdminDashboard() {
     </div>
   );
 }
-
-

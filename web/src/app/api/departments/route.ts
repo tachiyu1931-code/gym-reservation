@@ -20,18 +20,19 @@ export async function GET() {
   try {
     if (isUseMock()) {
       return NextResponse.json(
-        mockDepartments.map((d) => ({
+        mockDepartments.filter((d) => !d.deleted_at).map((d) => ({
           id: d.id,
           name: d.name,
           years: d.years_count,
-          classes: [...d.classes].sort((a, b) => a.grade - b.grade || a.class_name.localeCompare(b.class_name)),
+          classes: d.classes.filter((c) => !c.deleted_at).sort((a, b) => a.grade - b.grade || a.class_name.localeCompare(b.class_name)),
         }))
       );
     }
 
     const { data, error } = await supabase
       .from('departments_master')
-      .select('id, name, years_count, sort_order, department_classes(grade, class_name, sort_order)')
+      .select('id, name, years_count, sort_order, department_classes(grade, class_name, sort_order, deleted_at)')
+      .is('deleted_at', null)
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true });
 
@@ -43,6 +44,7 @@ export async function GET() {
         name: dept.name,
         years: dept.years_count,
         classes: (dept.department_classes ?? [])
+          .filter((c: { deleted_at?: string | null }) => !c.deleted_at)
           .map((c: { grade: number; class_name: string; sort_order: number }) => ({
             grade: c.grade,
             class_name: c.class_name,
@@ -65,3 +67,4 @@ export async function GET() {
     );
   }
 }
+

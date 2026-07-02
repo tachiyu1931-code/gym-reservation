@@ -6,8 +6,8 @@ export function AdminHeader({ loadData, loading, actionLoading }: any) {
   return (
     <div className="admin-header">
       <div className="admin-title-area">
-        <h1 className="admin-page-title">GYM RESERVE - 管理パネル</h1>
-        <p className="admin-page-subtitle">利用記録の確認とキャッシュマスタの保守</p>
+        <h1 className="admin-page-title">GYM RESERVATION - 管理パネル</h1>
+        <p className="admin-page-subtitle">入退室、学科管理</p>
       </div>
       <div className="admin-header-actions">
         <button className="btn btn-secondary" onClick={loadData} disabled={loading || actionLoading}>
