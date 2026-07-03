@@ -9,6 +9,29 @@ config.py
 =================================================
 """
 
+import json
+import os
+from pathlib import Path
+
+
+def _load_network_config() -> dict:
+    """共有の network-config.json から接続先を読み込む。"""
+    base_dir = Path(__file__).resolve().parents[2]
+    config_path = Path(os.environ.get("GYM_RESERVATION_CONFIG_PATH", base_dir / "network-config.json"))
+
+    if not config_path.exists():
+        return {}
+
+    try:
+        with config_path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+NETWORK_CONFIG = _load_network_config()
+
+
 # ===================== カメラ設定 =====================
 # OCR用（フル解像度）
 CAMERA_SIZE = (4608, 2592)
@@ -87,7 +110,10 @@ OCR_RETRY_INTERVAL_SEC = 0.5
 
 # ===================== API送信設定 =====================
 # 要調整-4: 実際のNext.js側APIエンドポイントに合わせて変更する
-NEXTJS_API_URL = "http://localhost:3000/api/checkin/scan"
+NEXTJS_HOST = NETWORK_CONFIG.get("nextjsHost", "localhost")
+NEXTJS_PORT = NETWORK_CONFIG.get("nextjsPort", 3000)
+NEXTJS_SCHEME = NETWORK_CONFIG.get("scheme", "http")
+NEXTJS_API_URL = f"{NEXTJS_SCHEME}://{NEXTJS_HOST}:{NEXTJS_PORT}/api/checkin/scan"
 
 # Basic Authではなく、サーバー間通信用の共有シークレットをヘッダーで送る方式を推奨
 # （/adminのBasic Authはブラウザでの人間の認証向けのため、ラズパイ→APIの
