@@ -91,6 +91,11 @@ CREATE TABLE IF NOT EXISTS users_cache (
     class_name VARCHAR(50)  NOT NULL,
     is_staff   BOOLEAN      NOT NULL DEFAULT FALSE,
     user_type  VARCHAR(20)  NOT NULL DEFAULT 'student',
+    total_usage_minutes INTEGER NOT NULL DEFAULT 0,
+    monthly_usage_minutes INTEGER NOT NULL DEFAULT 0,
+    consecutive_days INTEGER NOT NULL DEFAULT 0,
+    last_used_date DATE,
+    registered_at TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ  DEFAULT NOW(),
     updated_at TIMESTAMPTZ  DEFAULT NOW(),
     deleted_at TIMESTAMPTZ  DEFAULT NULL
@@ -148,6 +153,10 @@ CREATE TABLE IF NOT EXISTS usage_logs (
     checked_in_at  TIMESTAMPTZ  NOT NULL,
     checked_out_at TIMESTAMPTZ  DEFAULT NULL,
     auto_checked_out BOOLEAN    NOT NULL DEFAULT FALSE,
+    usage_duration_minutes INTEGER DEFAULT NULL,
+    is_adjusted    BOOLEAN      NOT NULL DEFAULT FALSE,
+    is_notified    BOOLEAN      NOT NULL DEFAULT FALSE,
+    admin_confirmed BOOLEAN     NOT NULL DEFAULT FALSE,
     created_at     TIMESTAMPTZ  DEFAULT NOW(),
     deleted_at     TIMESTAMPTZ  DEFAULT NULL
 );
@@ -158,6 +167,8 @@ ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS deleted_at     TIMESTAMPTZ DEFAU
 ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS class_name     VARCHAR(50);
 ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS user_type      VARCHAR(20) DEFAULT 'student';
 ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS auto_checked_out BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS is_adjusted     BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE usage_logs ADD COLUMN IF NOT EXISTS is_notified     BOOLEAN NOT NULL DEFAULT FALSE;
 
 UPDATE usage_logs
 SET user_type = CASE WHEN grade = '教職員' THEN 'staff' ELSE 'student' END
