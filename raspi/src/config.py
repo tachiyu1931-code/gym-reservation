@@ -65,6 +65,10 @@ CARD_WARP_HEIGHT = int(CARD_WARP_WIDTH / CARD_ASPECT_RATIO)
 # 要調整: /capture_warp?debug=1 等で実際のwarp画像を見ながら微調整すること。
 NUMBER_REGION_FRAC = {"x": 0.55, "y": 0.03, "w": 0.42, "h": 0.14}
 
+# Fixed OCR region in the full camera image.
+# Keep this in sync with web/src/components/ScannerOverlay.tsx CROP_BOX.
+NUMBER_ROI_BOX = {"x": 2800, "y": 3, "w": 1800, "h": 500}
+
 # ===================== OCR設定 =====================
 # 認識対象文字（数字＋T）
 OCR_WHITELIST = "0123456789T"

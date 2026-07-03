@@ -159,15 +159,13 @@ class ScannerStateMachine:
 
             try:
                 full_bgr = self._capture_full_bgr()
-                warped = card_detector.detect_and_warp(full_bgr)
+                fixed_crop = ocr_processor.crop_fixed_number_roi(full_bgr)
+                student_id, raw_text = ocr_processor.read_student_id_from_crop(fixed_crop)
 
-                if warped is None:
-                    logger.info("カード未検出(試行%d/%d)", attempt, config.MAX_OCR_RETRIES)
-                    time.sleep(config.OCR_RETRY_INTERVAL_SEC)
-                    continue
-
-                student_id, raw_text = ocr_processor.read_student_id_from_card(warped)
-
+                if student_id is None:
+                    warped = card_detector.detect_and_warp(full_bgr)
+                    if warped is not None:
+                        student_id, raw_text = ocr_processor.read_student_id_from_card(warped)
                 if student_id is None:
                     logger.info(
                         "OCRフォーマット不一致(試行%d/%d) raw=%r",

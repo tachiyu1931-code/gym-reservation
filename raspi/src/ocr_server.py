@@ -125,29 +125,37 @@ def gen_frames():
 
 def run_single_scan(debug: bool = False) -> dict:
     """
-    1回分のスキャン処理（カード検出→OCR→フォーマット検証）を実行する。
-    自動検知フローとは独立して、手動テスト・キャリブレーション用に使う。
-    ※ このヘルパーはAPI送信は行わない（/scanは確認用のため）。
+    Run one scan. Try the fixed UI-aligned number ROI first, then fall back to
+    card contour detection and perspective warp.
     """
     full_bgr = capture_full_bgr()
-    warped = card_detector.detect_and_warp(full_bgr)
 
-    if warped is None:
-        return {"success": False, "error": "カードが検出できませんでした"}
+    fixed_crop = ocr_processor.crop_fixed_number_roi(full_bgr)
+    student_id, raw_text = ocr_processor.read_student_id_from_crop(fixed_crop)
+    debug_crop = fixed_crop
+    method = "fixed_roi"
 
-    student_id, raw_text = ocr_processor.read_student_id_from_card(warped)
+    if student_id is None:
+        warped = card_detector.detect_and_warp(full_bgr)
+        if warped is not None:
+            student_id, raw_text = ocr_processor.read_student_id_from_card(warped)
+            debug_crop = ocr_processor.crop_number_region(warped)
+            method = "card_warp"
 
     result = {
         "success": student_id is not None,
         "studentId": student_id,
         "rawText": raw_text,
+        "method": method,
         "timestamp": datetime.now().isoformat(),
     }
 
+    if not result["success"]:
+        result["error"] = "OCR failed. Check the ID position, focus, and lighting."
+
     if debug:
-        crop = ocr_processor.crop_number_region(warped)
         buf = io.BytesIO()
-        Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)).save(buf, format="JPEG")
+        Image.fromarray(cv2.cvtColor(debug_crop, cv2.COLOR_BGR2RGB)).save(buf, format="JPEG")
         result["debugImage"] = base64.b64encode(buf.getvalue()).decode()
 
     return result

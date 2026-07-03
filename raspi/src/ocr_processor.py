@@ -89,19 +89,33 @@ def is_valid_format(student_id: str) -> bool:
     return bool(_ID_RE.match(student_id))
 
 
-def read_student_id_from_card(warped_bgr: np.ndarray):
-    """
-    台形補正済みカード画像 → 番号領域切り出し → 前処理 → OCR → 抽出、
-    を一括で行う。戻り値は (student_id or None, raw_text)。
-    """
-    crop = crop_number_region(warped_bgr)
-    processed = preprocess_for_ocr(crop)
+
+def crop_fixed_number_roi(full_bgr: np.ndarray) -> np.ndarray:
+    """Crop the fixed OCR region from the full camera image."""
+    h, w = full_bgr.shape[:2]
+    box = config.NUMBER_ROI_BOX
+    x = max(0, min(int(box["x"]), w))
+    y = max(0, min(int(box["y"]), h))
+    rw = max(1, min(int(box["w"]), w - x))
+    rh = max(1, min(int(box["h"]), h - y))
+    return full_bgr[y:y + rh, x:x + rw]
+
+
+def read_student_id_from_crop(bgr_crop: np.ndarray):
+    """Read a student ID directly from an already-cropped BGR image."""
+    processed = preprocess_for_ocr(bgr_crop)
     raw_text = run_ocr(processed)
     student_id = extract_student_id(raw_text)
 
     if student_id and not is_valid_format(student_id):
-        # 抽出はできたが厳密フォーマットに一致しない場合は不採用
-        logger.warning("フォーマット不一致のため破棄: %r (raw=%r)", student_id, raw_text)
+        logger.warning("Rejected invalid student id format %r (raw=%r)", student_id, raw_text)
         student_id = None
 
     return student_id, raw_text
+
+def read_student_id_from_card(warped_bgr: np.ndarray):
+    """
+    台形補正済みカード画像から学籍番号を読み取る。
+    """
+    crop = crop_number_region(warped_bgr)
+    return read_student_id_from_crop(crop)

@@ -22,7 +22,7 @@ interface ScannerOverlayProps {
 }
 
 const CAMERA_SIZE = { width: 4608, height: 2592 };
-const CROP_BOX = { x: 2400, y: 3, w: 1200, h: 300 };
+const CROP_BOX = { x: 2800, y: 3, w: 1800, h: 500 };
 
 const cropPercent = {
   left: (CROP_BOX.x / CAMERA_SIZE.width) * 100,
