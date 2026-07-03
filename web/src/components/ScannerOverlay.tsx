@@ -10,7 +10,6 @@ import {
   XCircle,
   WifiOff,
 } from 'lucide-react';
-import { ScanResult } from '@/lib/scanStudentId';
 import { type SupportedLanguage, type TranslationMessages } from '@/lib/translations';
 import styles from './ScannerOverlay.module.css';
 
@@ -36,62 +35,67 @@ type ScanPhase = 'live' | 'capturing' | 'success' | 'error';
 export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverlayProps) {
   const [phase, setPhase] = useState<ScanPhase>('live');
   const [errorMessage, setErrorMessage] = useState('');
-  const [attempt, setAttempt] = useState(0);
   const [streamOk, setStreamOk] = useState(true);
   const [streamKey, setStreamKey] = useState(0);
 
-  const isProcessingRef = useRef(false);
-  const autoRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const videoStreamUrl = `/api/camera-stream?ts=${streamKey}`;
 
-  const startScanning = useCallback(async () => {
-    if (isProcessingRef.current) return;
-    isProcessingRef.current = true;
-    setPhase('capturing');
-    setErrorMessage('');
-    setAttempt((n) => n + 1);
-
+  // Poll /api/scan/status (proxy to raspi /status) to reflect state machine
+  const didReportSuccessRef = useRef(false);
+  const pollStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/scan', { method: 'POST' });
-      const data: ScanResult = await res.json();
-
-      if (data.success && data.studentId) {
-        setPhase('success');
-        setTimeout(() => onScanSuccess(data.studentId as string), 400);
+      const res = await fetch('/api/scan/status', { cache: 'no-store' });
+      if (!res.ok) {
+        setPhase('error');
+        setErrorMessage(t.raspiConnectionErr);
         return;
       }
+      const data = await res.json();
+      const state = data.state as string;
 
-      setPhase('error');
-      setErrorMessage(data.error || t.scanReadErr);
-    } catch {
+      if (state === 'processing' || state === 'detected') {
+        setPhase('capturing');
+        setErrorMessage('');
+      } else if (state === 'idle') {
+        setPhase('live');
+        setErrorMessage('');
+      } else if (state === 'success') {
+        setPhase('success');
+        setErrorMessage('');
+        const sid = data.studentId as string | undefined;
+        if (sid && !didReportSuccessRef.current) {
+          didReportSuccessRef.current = true;
+          setTimeout(() => onScanSuccess(sid), 400);
+        }
+      } else if (state === 'error') {
+        setPhase('error');
+        setErrorMessage(data.message || t.scanReadErr);
+      } else if (state === 'cooldown') {
+        setPhase('live');
+        setErrorMessage('');
+      } else {
+        setPhase('live');
+        setErrorMessage('');
+      }
+    } catch (err) {
       setPhase('error');
       setErrorMessage(t.raspiConnectionErr);
-    } finally {
-      isProcessingRef.current = false;
     }
   }, [onScanSuccess, t.raspiConnectionErr, t.scanReadErr]);
 
   useEffect(() => {
-    const timer = setTimeout(() => startScanning(), 1000);
-    return () => clearTimeout(timer);
-  }, [startScanning]);
-
-  useEffect(() => {
-    if (phase === 'error') {
-      autoRetryRef.current = setTimeout(() => startScanning(), 3000);
-    }
-    return () => {
-      if (autoRetryRef.current) clearTimeout(autoRetryRef.current);
-    };
-  }, [phase, startScanning]);
+    // start polling immediately
+    pollStatus();
+    const iv = setInterval(() => pollStatus(), 500);
+    return () => clearInterval(iv);
+  }, [pollStatus]);
 
   const statusLabel = (() => {
     switch (phase) {
       case 'live':
         return t.scanGuide;
       case 'capturing':
-        return `${t.scanning} (${attempt})`;
+        return t.scanning;
       case 'success':
         return lang === 'ja' ? 'Scan OK' : 'Scan successful';
       case 'error':
@@ -195,7 +199,7 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
         <div className={styles.actionRow}>
           {phase === 'error' && (
             <button
-              onClick={startScanning}
+              onClick={() => { didReportSuccessRef.current = false; pollStatus(); }}
               className={styles.retryButton}
             >
               <RefreshCw size={16} />
