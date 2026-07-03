@@ -12,8 +12,14 @@
  * =================================================
  */
 
-const RASPI_HOST = process.env.RASPI_OCR_HOST || '192.168.3.248';
-const RASPI_PORT = process.env.RASPI_OCR_PORT || '5000';
+type RuntimeEnv = {
+  process?: {
+    env?: Record<string, string | undefined>;
+  };
+};
+
+const runtimeEnv = (globalThis as typeof globalThis & RuntimeEnv).process?.env;
+const RASPI_BASE_URL = runtimeEnv?.NEXT_PUBLIC_RASPI_BASE_URL || 'http://192.168.3.248:5000'; // 自宅のプライベートIPアドレス
 
 // カメラ撮影+OCR処理に時間がかかるため、タイムアウトは長めに設定
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -37,7 +43,7 @@ export async function scanStudentId(
   options: ScanOptions = {}
 ): Promise<ScanResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const url = `http://${RASPI_HOST}:${RASPI_PORT}/scan`;
+  const url = `${RASPI_BASE_URL}/scan`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -92,7 +98,7 @@ export async function scanStudentId(
  */
 export async function checkConnection(): Promise<boolean> {
   try {
-    const res = await fetch(`http://${RASPI_HOST}:${RASPI_PORT}/health`, {
+    const res = await fetch(`${RASPI_BASE_URL}/health`, {
       signal: AbortSignal.timeout(3000),
       cache: 'no-store',
     });
@@ -103,4 +109,4 @@ export async function checkConnection(): Promise<boolean> {
 }
 
 // ラズパイの映像ストリーム用URLの組み立て
-export const RASPI_VIDEO_URL = `http://${RASPI_HOST}:${RASPI_PORT}/stream`; 
+export const RASPI_VIDEO_URL = `${RASPI_BASE_URL}/stream`;
