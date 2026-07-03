@@ -8,7 +8,7 @@ export const TRANSLATIONS = {
   ja: {
     title: 'GYM RESERVATION',
     subtitle: 'ジム利用記録システム',
-    heroPrompt: '学生証をスキャン、または番号を入力してください',
+    heroPrompt: '学生証をスキャン、または学籍番号を入力し、Enterを押してください',
     welcomeIn: '入室する方の学籍番号・教職員番号を入力してください',
     welcomeOut: '退室する方の学籍番号・教職員番号を入力してください',
     messagesOfSupport:'今日のトレーニングも頑張りましょう！',

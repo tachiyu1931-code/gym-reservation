@@ -21,16 +21,9 @@ interface ScannerOverlayProps {
   onClose: () => void;
 }
 
-const RASPI_HOST = '192.168.3.248';
-const RASPI_PORT = '5000';
-
-// ocr_server.py の CROP_BOX と一致させる
-// ここは ocr_server.py の CAMERA_SIZE (main解像度) を基準にした実ピクセル値
-// CROP_BOX を変更したら、ここも同じ値に更新する
 const CAMERA_SIZE = { width: 4608, height: 2592 };
-const CROP_BOX = { x: 2400, y: 3, w: 1200, h: 300 }; // 切り取って実際に読み取る部分
+const CROP_BOX = { x: 2400, y: 3, w: 1200, h: 300 };
 
-// 実ピクセルをパーセンテージに変換。映像の表示サイズが変わっても追従できるようにする
 const cropPercent = {
   left: (CROP_BOX.x / CAMERA_SIZE.width) * 100,
   top: (CROP_BOX.y / CAMERA_SIZE.height) * 100,
@@ -50,7 +43,7 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
   const isProcessingRef = useRef(false);
   const autoRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const videoStreamUrl = `http://${RASPI_HOST}:${RASPI_PORT}/stream?ts=${streamKey}`;
+  const videoStreamUrl = `/api/camera-stream?ts=${streamKey}`;
 
   const startScanning = useCallback(async () => {
     if (isProcessingRef.current) return;
@@ -96,11 +89,11 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
   const statusLabel = (() => {
     switch (phase) {
       case 'live':
-        return lang === 'ja' ? '学籍番号を枠に合わせてください' : 'Align your ID in the frame';
+        return t.scanGuide;
       case 'capturing':
-        return lang === 'ja' ? `読み取り中… (${attempt}回目)` : `Reading… (attempt ${attempt})`;
+        return `${t.scanning} (${attempt})`;
       case 'success':
-        return lang === 'ja' ? '読み取り成功！' : 'Scan Successful!';
+        return lang === 'ja' ? 'Scan OK' : 'Scan successful';
       case 'error':
         return errorMessage || t.scanReadErr;
     }
@@ -130,8 +123,8 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
         </div>
       </div>
 
-      {/* 映像モニター */}
       <div className={styles.cameraFrame}>
+        {/* eslint-disable-next-line @next/next/no-img-element -- MJPEG streams require a plain img element. */}
         <img
           key={streamKey}
           src={videoStreamUrl}
@@ -150,7 +143,7 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
               className={styles.reconnectButton}
             >
               <RefreshCw size={14} />
-              {lang === 'ja' ? '再接続中..' : 'Reconnect feed'}
+              {lang === 'ja' ? 'Reconnect' : 'Reconnect feed'}
             </button>
           </div>
         )}
@@ -159,8 +152,6 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
           <div className={styles.flashOverlay} />
         )}
 
-        {/* ===== 学籍番号読み取りエリアの「スポットライト」表示 =====
-            枠の外側だけ暗くし、CROP_BOXの範囲内はそのままの明度で見せる。*/}
         <div
           className={styles.cropGuide}
           style={{
@@ -173,7 +164,6 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
             boxShadow: `0 0 0 9999px rgba(0,0,0,0.65), 0 0 16px ${phaseColor}66`,
           }}
         >
-          {/* ラベル */}
           <div
             className={styles.cropLabel}
             style={{ backgroundColor: phaseColor }}
@@ -181,13 +171,12 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
             {phase === 'capturing' && <Camera size={10} />}
             {phase === 'success' && <CheckCircle2 size={10} />}
             {phase === 'error' && <XCircle size={10} />}
-            {phase === 'live' && (lang === 'ja' ? '枠内に学籍番号を合わせてください' : 'Align ID here')}
-            {phase === 'capturing' && (lang === 'ja' ? '撮影中' : 'Capturing')}
-            {phase === 'success' && (lang === 'ja' ? '成功！' : 'Success')}
-            {phase === 'error' && (lang === 'ja' ? '再試行中' : 'Retrying')}
+            {phase === 'live' && (lang === 'ja' ? 'ID area' : 'Align ID here')}
+            {phase === 'capturing' && (lang === 'ja' ? 'Capturing' : 'Capturing')}
+            {phase === 'success' && (lang === 'ja' ? 'Success' : 'Success')}
+            {phase === 'error' && (lang === 'ja' ? 'Retrying' : 'Retrying')}
           </div>
 
-          {/* 四隅のコーナーを角丸にする*/}
           <div className={`${styles.corner} ${styles.cornerTopLeft}`} style={{ borderColor: phaseColor }} />
           <div className={`${styles.corner} ${styles.cornerTopRight}`} style={{ borderColor: phaseColor }} />
           <div className={`${styles.corner} ${styles.cornerBottomLeft}`} style={{ borderColor: phaseColor }} />
@@ -195,7 +184,6 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
         </div>
       </div>
 
-      {/* ステータスと操作ボタン */}
       <div className={styles.controls}>
         <div className={styles.statusMessage}>
           {phase === 'capturing' && <Loader2 className={`${styles.spin} ${styles.warningText}`} size={18} />}

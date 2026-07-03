@@ -200,7 +200,7 @@ if (!globalForMock.mockCache) {
       is_staff: false,
       user_type: 'student',
       total_usage_minutes: 1000000,
-      monthly_usage_minutes: 211,
+      monthly_usage_minutes: 100,
       consecutive_days: 10,
       last_used_date: new Date().toISOString().slice(0, 10),
       created_at: new Date().toISOString(),
