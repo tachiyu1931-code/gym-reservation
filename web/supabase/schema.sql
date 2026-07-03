@@ -366,6 +366,13 @@ BEGIN
     WHERE deleted_at IS NULL;
 END;
 $$ LANGUAGE plpgsql;
-
-
-
+-- ==========================================
+-- 9. 年度更新履歴テーブル
+--    4月の学生キャッシュ自動進級の二重実行を防止
+-- ==========================================
+CREATE TABLE IF NOT EXISTS annual_grade_promotions (
+    school_year INTEGER PRIMARY KEY,
+    promoted_count INTEGER NOT NULL DEFAULT 0,
+    deleted_count INTEGER NOT NULL DEFAULT 0,
+    executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

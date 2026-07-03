@@ -4,8 +4,174 @@ import { supabase } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 import { isUseMock, mockLogs, mockCache, mockDepartments, mockNotifications } from '@/lib/mockDb';
 import { addUsageStats, calculateUsageMinutes } from '@/lib/usageStats';
+import { normalizeDepartment } from '@/constants/departments';
 
 const AUTO_CHECKOUT_HOURS = 15;
+const ANNUAL_GRADE_PROMOTION_MONTH = 4;
+
+
+type AnnualGradePromotionResult = {
+  executed: boolean;
+  schoolYear: number | null;
+  promotedCount: number;
+  deletedCount: number;
+};
+
+const globalForAnnualPromotion = globalThis as unknown as {
+  mockAnnualGradePromotions?: Set<number>;
+};
+
+function getTokyoYearMonth(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: 'numeric',
+  }).formatToParts(date);
+
+  return {
+    year: Number(parts.find((part) => part.type === 'year')?.value),
+    month: Number(parts.find((part) => part.type === 'month')?.value),
+  };
+}
+
+function parseGradeNumber(grade: string): number | null {
+  const match = grade.trim().match(/^(\d+)\s*年?$/);
+  if (!match) return null;
+
+  const gradeNumber = Number(match[1]);
+  return Number.isInteger(gradeNumber) && gradeNumber > 0 ? gradeNumber : null;
+}
+
+function buildDepartmentYearsMap(departments: { name: string; years_count: number; deleted_at?: string | null }[]) {
+  const map = new Map<string, number>();
+
+  for (const department of departments) {
+    if (department.deleted_at) continue;
+    const years = Number(department.years_count);
+    if (!Number.isInteger(years) || years < 1) continue;
+
+    const name = department.name.trim();
+    map.set(name, years);
+    map.set(normalizeDepartment(name), years);
+  }
+
+  return map;
+}
+
+function findYearsForDepartment(departmentYearsMap: Map<string, number>, department: string) {
+  const name = department.trim();
+  return departmentYearsMap.get(name) ?? departmentYearsMap.get(normalizeDepartment(name)) ?? null;
+}
+
+async function runAnnualGradePromotion(now: Date): Promise<AnnualGradePromotionResult> {
+  const { year, month } = getTokyoYearMonth(now);
+  if (month !== ANNUAL_GRADE_PROMOTION_MONTH) {
+    return { executed: false, schoolYear: null, promotedCount: 0, deletedCount: 0 };
+  }
+
+  const schoolYear = year;
+  const deletedAt = now.toISOString();
+  let promotedCount = 0;
+  let deletedCount = 0;
+
+  if (isUseMock()) {
+    if (!globalForAnnualPromotion.mockAnnualGradePromotions) {
+      globalForAnnualPromotion.mockAnnualGradePromotions = new Set<number>();
+    }
+    if (globalForAnnualPromotion.mockAnnualGradePromotions.has(schoolYear)) {
+      return { executed: false, schoolYear, promotedCount: 0, deletedCount: 0 };
+    }
+
+    const departmentYearsMap = buildDepartmentYearsMap(mockDepartments);
+    for (const cache of mockCache) {
+      if (cache.deleted_at || cache.is_staff || cache.user_type === 'staff') continue;
+
+      const gradeNumber = parseGradeNumber(cache.grade);
+      const years = findYearsForDepartment(departmentYearsMap, cache.department);
+      if (!gradeNumber || !years) continue;
+
+      if (gradeNumber >= years) {
+        cache.deleted_at = deletedAt;
+        cache.updated_at = deletedAt;
+        deletedCount += 1;
+      } else {
+        cache.grade = `${gradeNumber + 1}年`;
+        cache.updated_at = deletedAt;
+        promotedCount += 1;
+      }
+    }
+
+    globalForAnnualPromotion.mockAnnualGradePromotions.add(schoolYear);
+    revalidatePath('/admin');
+    return { executed: true, schoolYear, promotedCount, deletedCount };
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from('annual_grade_promotions')
+    .select('school_year')
+    .eq('school_year', schoolYear)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+  if (existing) {
+    return { executed: false, schoolYear, promotedCount: 0, deletedCount: 0 };
+  }
+
+  const { data: departments, error: departmentsError } = await supabase
+    .from('departments_master')
+    .select('name, years_count, deleted_at')
+    .is('deleted_at', null);
+
+  if (departmentsError) throw departmentsError;
+
+  const departmentYearsMap = buildDepartmentYearsMap(departments ?? []);
+  const { data: caches, error: cachesError } = await supabase
+    .from('users_cache')
+    .select('student_id, department, grade, is_staff, user_type')
+    .is('deleted_at', null)
+    .eq('user_type', 'student');
+
+  if (cachesError) throw cachesError;
+
+  for (const cache of caches ?? []) {
+    if (cache.is_staff || cache.user_type === 'staff') continue;
+
+    const gradeNumber = parseGradeNumber(cache.grade);
+    const years = findYearsForDepartment(departmentYearsMap, cache.department);
+    if (!gradeNumber || !years) continue;
+
+    if (gradeNumber >= years) {
+      const { error } = await supabase
+        .from('users_cache')
+        .update({ deleted_at: deletedAt })
+        .eq('student_id', cache.student_id)
+        .is('deleted_at', null);
+      if (error) throw error;
+      deletedCount += 1;
+    } else {
+      const { error } = await supabase
+        .from('users_cache')
+        .update({ grade: `${gradeNumber + 1}年` })
+        .eq('student_id', cache.student_id)
+        .is('deleted_at', null);
+      if (error) throw error;
+      promotedCount += 1;
+    }
+  }
+
+  const { error: insertError } = await supabase.from('annual_grade_promotions').insert({
+    school_year: schoolYear,
+    promoted_count: promotedCount,
+    deleted_count: deletedCount,
+  });
+
+  if (insertError) throw insertError;
+  revalidatePath('/admin');
+  return { executed: true, schoolYear, promotedCount, deletedCount };
+}
+export async function ensureAnnualGradePromotion(): Promise<AnnualGradePromotionResult> {
+  return runAnnualGradePromotion(new Date());
+}
 
 type AutoCheckoutNotificationSource = {
   id: number;

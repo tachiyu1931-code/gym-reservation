@@ -25,6 +25,7 @@ import {
   addDepartmentClass,
   deleteDepartmentClass,
   updateDepartmentYears,
+  ensureAnnualGradePromotion,
   type DepartmentMaster,
   type DeletedDepartmentMaster
 } from '@/app/admin/actions';
@@ -110,6 +111,7 @@ export default function AdminDashboard() {
     setLoading(true);
     setErrorMsg('');
     try {
+      await ensureAnnualGradePromotion();
       const [logsData, cachesData, deptData, delLogsData, delCachesData, delDeptData] = await Promise.all([
         getUsageLogs() as Promise<UsageLog[]>,
         getUsersCache() as Promise<UserCache[]>,
