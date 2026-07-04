@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { isUseMock, mockLogs, mockNotifications } from '@/lib/mockDb';
 import { addUsageStats, calculateUsageMinutes } from '@/lib/usageStats';
+import { getIdFormatHint, isValidStudentOrStaffId, normalizeIdInput } from '@/lib/idFormat';
 
 const AUTO_CHECKOUT_HOURS = 15;
 const AUTO_ADJUSTED_MINUTES = 30;
@@ -130,10 +131,14 @@ async function runAutoCheckout() {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const student_id = (searchParams.get('student_id') ?? searchParams.get('user_code') ?? '').trim().toUpperCase();
+  const student_id = normalizeIdInput(searchParams.get('student_id') ?? searchParams.get('user_code') ?? '');
 
   if (!student_id) {
     return NextResponse.json({ error: 'student_id is required' }, { status: 400 });
+  }
+
+  if (!isValidStudentOrStaffId(student_id)) {
+    return NextResponse.json({ error: getIdFormatHint() }, { status: 400 });
   }
 
   try {
