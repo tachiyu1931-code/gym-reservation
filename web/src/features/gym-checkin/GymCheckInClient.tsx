@@ -372,7 +372,7 @@ export default function GymCheckIn() {
     const detectedType = detectUserType(normalizedId);
 
     if (detectedType === 'unknown' || !isValidStudentOrStaffId(normalizedId)) {
-      setErrorMessage(getIdFormatHint());
+      setErrorMessage(getIdFormatHint(lang));
       return;
     }
 
@@ -517,7 +517,7 @@ export default function GymCheckIn() {
     const detectedType = detectUserType(normalizedId);
 
     if (detectedType === 'unknown' || !isValidStudentOrStaffId(normalizedId)) {
-      setErrorMessage(getIdFormatHint());
+      setErrorMessage(getIdFormatHint(lang));
       return;
     }
     // 教職員の場合、学年とクラスを自動補完してバリデーションを通す

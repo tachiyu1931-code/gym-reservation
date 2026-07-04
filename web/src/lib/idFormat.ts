@@ -26,6 +26,8 @@ export function isValidStudentOrStaffId(value: string): boolean {
   return STUDENT_ID_REGEX.test(normalized) || STAFF_ID_REGEX.test(normalized);
 }
 
-export function getIdFormatHint(): string {
-  return `学籍番号は${STUDENT_ID_DIGITS}桁、教職員番号はT+${STAFF_ID_DIGITS}桁で入力してください。`;
+export function getIdFormatHint(lang: 'ja' | 'en' = 'ja'): string {
+  return lang === 'en'
+    ? `Please enter a ${STUDENT_ID_DIGITS}-digit student number or a staff ID in the format T${'0'.repeat(STAFF_ID_DIGITS)}.`
+    : `学籍番号は${STUDENT_ID_DIGITS}桁、教職員番号はT+${STAFF_ID_DIGITS}桁で入力してください。`;
 }

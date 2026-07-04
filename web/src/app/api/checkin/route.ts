@@ -13,6 +13,7 @@ type CheckInPayload = {
   is_staff?: boolean;
   role?: 'student' | 'staff';
   checked_in_at?: string;
+  lang?: 'ja' | 'en';
 };
 
 type EffectiveUser = {
@@ -37,8 +38,10 @@ export async function POST(request: Request) {
     const class_name = is_staff ? '教職員' : (body.class_name ?? '').trim();
     const checked_in_at = body.checked_in_at ?? new Date().toISOString();
 
+    const lang = (body.lang as 'ja' | 'en' | undefined) ?? 'ja';
+
     if (!isValidStudentOrStaffId(student_id)) {
-      return NextResponse.json({ error: getIdFormatHint() }, { status: 400 });
+      return NextResponse.json({ error: getIdFormatHint(lang) }, { status: 400 });
     }
 
     if (!student_id || !name || !checked_in_at || (!is_staff && (!department || !grade || !class_name))) {

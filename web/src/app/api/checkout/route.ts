@@ -132,13 +132,14 @@ async function runAutoCheckout() {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const student_id = normalizeIdInput(searchParams.get('student_id') ?? searchParams.get('user_code') ?? '');
+  const lang = (searchParams.get('lang') as 'ja' | 'en' | null) ?? 'ja';
 
   if (!student_id) {
     return NextResponse.json({ error: 'student_id is required' }, { status: 400 });
   }
 
   if (!isValidStudentOrStaffId(student_id)) {
-    return NextResponse.json({ error: getIdFormatHint() }, { status: 400 });
+    return NextResponse.json({ error: getIdFormatHint(lang) }, { status: 400 });
   }
 
   try {
