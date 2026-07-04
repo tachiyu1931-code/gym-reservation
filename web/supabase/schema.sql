@@ -304,7 +304,10 @@ BEGIN
     WITH updated_logs AS (
         UPDATE usage_logs
         SET checked_out_at = checked_in_at + INTERVAL '15 hours',
+            usage_duration_minutes = 30,
             auto_checked_out = TRUE,
+            is_adjusted = TRUE,
+            is_notified = FALSE,
             admin_confirmed = FALSE
         WHERE checked_out_at IS NULL
           AND deleted_at     IS NULL
@@ -407,3 +410,87 @@ CREATE TABLE IF NOT EXISTS annual_grade_promotions (
     deleted_count INTEGER NOT NULL DEFAULT 0,
     executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ==========================================
+-- 10. Annual grade promotion RPC
+-- ==========================================
+CREATE OR REPLACE FUNCTION normalize_department_name(input_name TEXT)
+RETURNS TEXT AS $$
+BEGIN
+    RETURN CASE TRIM(COALESCE(input_name, ''))
+        WHEN '情報IT学科' THEN 'ITスペシャリスト科'
+        WHEN '情報IT科' THEN 'ITスペシャリスト科'
+        WHEN '建築学科' THEN '建築設計科'
+        WHEN '国際学科' THEN '国際ITビジネス科'
+        ELSE TRIM(COALESCE(input_name, ''))
+    END;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION promote_annual_grades(target_school_year INTEGER)
+RETURNS TABLE(executed BOOLEAN, promoted_count INTEGER, deleted_count INTEGER) AS $$
+DECLARE
+    inserted_count INTEGER;
+    promoted_total INTEGER := 0;
+    deleted_total INTEGER := 0;
+BEGIN
+    INSERT INTO annual_grade_promotions (school_year, promoted_count, deleted_count)
+    VALUES (target_school_year, 0, 0)
+    ON CONFLICT (school_year) DO NOTHING;
+
+    GET DIAGNOSTICS inserted_count = ROW_COUNT;
+    IF inserted_count = 0 THEN
+        RETURN QUERY SELECT FALSE, 0, 0;
+        RETURN;
+    END IF;
+
+    WITH department_years AS (
+        SELECT normalize_department_name(name) AS department_name,
+               MAX(years_count)::INTEGER AS years_count
+        FROM departments_master
+        WHERE deleted_at IS NULL
+        GROUP BY normalize_department_name(name)
+    ), targets AS (
+        SELECT cache.student_id,
+               (regexp_match(TRIM(cache.grade), '^(\d+)\s*年?$'))[1]::INTEGER AS grade_number,
+               years.years_count
+        FROM users_cache cache
+        JOIN department_years years
+          ON normalize_department_name(cache.department) = years.department_name
+        WHERE cache.deleted_at IS NULL
+          AND cache.user_type = 'student'
+          AND cache.is_staff = FALSE
+          AND TRIM(cache.grade) ~ '^(\d+)\s*年?$'
+    ), promoted AS (
+        UPDATE users_cache cache
+        SET grade = (targets.grade_number + 1)::TEXT || '年',
+            updated_at = NOW()
+        FROM targets
+        WHERE cache.student_id = targets.student_id
+          AND targets.grade_number < targets.years_count
+          AND cache.deleted_at IS NULL
+        RETURNING cache.student_id
+    ), deleted AS (
+        UPDATE users_cache cache
+        SET deleted_at = NOW(),
+            updated_at = NOW()
+        FROM targets
+        WHERE cache.student_id = targets.student_id
+          AND targets.grade_number >= targets.years_count
+          AND cache.deleted_at IS NULL
+        RETURNING cache.student_id
+    )
+    SELECT
+        (SELECT COUNT(*)::INTEGER FROM promoted),
+        (SELECT COUNT(*)::INTEGER FROM deleted)
+    INTO promoted_total, deleted_total;
+
+    UPDATE annual_grade_promotions
+    SET promoted_count = promoted_total,
+        deleted_count = deleted_total,
+        executed_at = NOW()
+    WHERE school_year = target_school_year;
+
+    RETURN QUERY SELECT TRUE, promoted_total, deleted_total;
+END;
+$$ LANGUAGE plpgsql;
