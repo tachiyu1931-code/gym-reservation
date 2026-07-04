@@ -2,7 +2,7 @@
 import { BarChart3, History, Users } from 'lucide-react';
 
 export function StatsTab(props: any) {
-  const { todayCount, todayUniqueUsers, totalRegisteredCaches, logs, todayLogs, todayStr } = props;
+  const { todayCount, todayUniqueUsers, totalRegisteredCaches, currentlyInGymCount, logs, todayLogs } = props;
 
   return (
         <div className="section" style={{ justifyContent: 'flex-start', alignItems: 'stretch' }}>
@@ -43,9 +43,7 @@ export function StatsTab(props: any) {
               </div>
               <div className="stat-info">
                 <span className="stat-value">
-                  {logs.filter((l: any) => !l.checked_out_at &&
-                    new Date(l.checked_in_at).toISOString().split('T')[0] === todayStr
-                  ).length} 人
+                  {currentlyInGymCount} 人
                 </span>
                 <span className="stat-label">現在の在室人数</span>
               </div>

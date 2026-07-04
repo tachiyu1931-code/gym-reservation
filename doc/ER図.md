@@ -136,5 +136,5 @@ erDiagram
 * 管理者が削除操作を行うと `deleted_at` に現在時刻がセットされ、ゴミ箱に移動します。
 * ゴミ箱から30日以内であれば復元可能です。
 * 30日経過後は自動バッチ処理（またはSupabase Functionによるスケジューラ）により物理削除されます。
-* `usage_logs` において `checked_out_at IS NULL AND deleted_at IS NULL` かつ `checked_in_at > NOW() - INTERVAL '15 hours'` のレコードが「現在在室中」の判定対象です。
-* チェックイン後15時間が経過しても `checked_out_at` が記録されていない場合は、バッチまたはAPI呼び出し時に自動で `checked_out_at = checked_in_at + INTERVAL '15 hours'` を設定します。
+* 「現在在室中」は、自動チェックアウト処理を実行した後の `usage_logs.checked_out_at IS NULL AND usage_logs.deleted_at IS NULL` のレコードとして判定します。日付条件は付けません。
+* チェックイン後15時間が経過しても `checked_out_at` が記録されていない場合は、バッチまたはAPI呼び出し時に自動で `checked_out_at = checked_in_at + INTERVAL '15 hours'`、`usage_duration_minutes = 30`、`auto_checked_out = TRUE`、`is_adjusted = TRUE`、`is_notified = FALSE` を設定します。
