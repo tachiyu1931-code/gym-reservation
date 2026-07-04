@@ -22,6 +22,25 @@ _ID_RE = re.compile(r"^" + config.ID_PATTERN + r"$")
 _ID_SEARCH_RE = re.compile(config.ID_PATTERN)
 
 
+def _crop_by_frac(bgr_crop: np.ndarray, x: float, y: float, w: float, h: float) -> np.ndarray:
+    crop_h, crop_w = bgr_crop.shape[:2]
+    left = max(0, min(int(crop_w * x), crop_w - 1))
+    top = max(0, min(int(crop_h * y), crop_h - 1))
+    right = max(left + 1, min(int(crop_w * (x + w)), crop_w))
+    bottom = max(top + 1, min(int(crop_h * (y + h)), crop_h))
+    return bgr_crop[top:bottom, left:right]
+
+
+def iter_ocr_candidate_crops(bgr_crop: np.ndarray):
+    """Yield full and number-focused crops from a configured ID area."""
+    yield "full", bgr_crop
+    # The fixed ROI matches the UI guide, so it can include the label and
+    # dotted guide line. Focus OCR on the printed ID before giving up.
+    yield "right_focus", _crop_by_frac(bgr_crop, 0.25, 0.05, 0.70, 0.70)
+    yield "right_middle", _crop_by_frac(bgr_crop, 0.25, 0.15, 0.70, 0.50)
+    yield "center_wide", _crop_by_frac(bgr_crop, 0.15, 0.05, 0.80, 0.70)
+
+
 def crop_number_region(warped_bgr: np.ndarray) -> np.ndarray:
     """
     台形補正済みカード画像から、学籍番号領域(NUMBER_REGION_FRAC)を切り出す。
@@ -103,15 +122,21 @@ def crop_fixed_number_roi(full_bgr: np.ndarray) -> np.ndarray:
 
 def read_student_id_from_crop(bgr_crop: np.ndarray):
     """Read a student ID directly from an already-cropped BGR image."""
-    processed = preprocess_for_ocr(bgr_crop)
-    raw_text = run_ocr(processed)
-    student_id = extract_student_id(raw_text)
+    raw_results = []
 
-    if student_id and not is_valid_format(student_id):
-        logger.warning("Rejected invalid student id format %r (raw=%r)", student_id, raw_text)
-        student_id = None
+    for label, candidate_crop in iter_ocr_candidate_crops(bgr_crop):
+        processed = preprocess_for_ocr(candidate_crop)
+        raw_text = run_ocr(processed)
+        raw_results.append(f"{label}={raw_text!r}")
 
-    return student_id, raw_text
+        student_id = extract_student_id(raw_text)
+        if student_id and is_valid_format(student_id):
+            return student_id, raw_text
+
+        if student_id:
+            logger.warning("Rejected invalid student id format %r (raw=%r)", student_id, raw_text)
+
+    return None, "; ".join(raw_results)
 
 def read_student_id_from_card(warped_bgr: np.ndarray):
     """
