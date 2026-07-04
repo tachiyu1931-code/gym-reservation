@@ -124,6 +124,16 @@ BEGIN
             ADD CONSTRAINT users_cache_user_type_check
             CHECK (user_type IN ('student', 'staff'));
     END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'users_cache_student_id_format_check'
+          AND conrelid = 'users_cache'::regclass
+    ) THEN
+        ALTER TABLE users_cache
+            ADD CONSTRAINT users_cache_student_id_format_check
+            CHECK (student_id ~ '^\\d{7}$' OR student_id ~ '^T\\d{3}$') NOT VALID;
+    END IF;
 END $$;
 
 -- updated_at 自動更新トリガー
@@ -186,6 +196,16 @@ BEGIN
         ALTER TABLE usage_logs
             ADD CONSTRAINT usage_logs_user_type_check
             CHECK (user_type IN ('student', 'staff'));
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'usage_logs_student_id_format_check'
+          AND conrelid = 'usage_logs'::regclass
+    ) THEN
+        ALTER TABLE usage_logs
+            ADD CONSTRAINT usage_logs_student_id_format_check
+            CHECK (student_id ~ '^\\d{7}$' OR student_id ~ '^T\\d{3}$') NOT VALID;
     END IF;
 END $$;
 

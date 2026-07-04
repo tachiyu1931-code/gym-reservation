@@ -1,15 +1,17 @@
-﻿export type DetectedUserType = 'student' | 'staff' | 'unknown';
+﻿import { isValidStaffId, isValidStudentId, normalizeIdInput } from '@/lib/idFormat';
+
+export type DetectedUserType = 'student' | 'staff' | 'unknown';
 
 export function detectUserType(id: string): DetectedUserType {
-  const normalizedId = id.trim().toUpperCase();
+  const normalizedId = normalizeIdInput(id);
 
   if (!normalizedId) return 'unknown';
 
-  if (/^\d+$/.test(normalizedId)) {
+  if (isValidStudentId(normalizedId)) {
     return 'student';
   }
 
-  if (/[A-Z]/.test(normalizedId)) {
+  if (isValidStaffId(normalizedId)) {
     return 'staff';
   }
 

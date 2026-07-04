@@ -9,6 +9,7 @@ import { DEPARTMENTS } from '@/constants/departments';
 import { cleanStudentId, cleanName } from '@/utils/cleansing';
 import { detectUserType } from '@/utils/detectUserType';
 import { DEFAULT_LANGUAGE, TRANSLATIONS, type SupportedLanguage, type TranslationMessages } from '@/lib/translations';
+import { getIdFormatHint, isValidStudentOrStaffId, normalizeIdInput } from '@/lib/idFormat';
 import { ScannerOverlay } from '@/components/ScannerOverlay';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { RankingsScreen } from './components/RankingsScreen';
@@ -367,11 +368,11 @@ export default function GymCheckIn() {
     return formatter.format(new Date(dateString));
   };
   const lookupUserStatus = async (id: string) => {
-    const normalizedId = id.trim().toUpperCase();
+    const normalizedId = normalizeIdInput(id);
     const detectedType = detectUserType(normalizedId);
 
-    if (detectedType === 'unknown') {
-      setErrorMessage(t.requiredError);
+    if (detectedType === 'unknown' || !isValidStudentOrStaffId(normalizedId)) {
+      setErrorMessage(getIdFormatHint(lang));
       return;
     }
 
@@ -512,11 +513,11 @@ export default function GymCheckIn() {
     e?.preventDefault();
     setErrorMessage('');
 
-    const normalizedId = studentId.trim().toUpperCase();
+    const normalizedId = normalizeIdInput(studentId);
     const detectedType = detectUserType(normalizedId);
 
-    if (detectedType === 'unknown') {
-      setErrorMessage(t.requiredError);
+    if (detectedType === 'unknown' || !isValidStudentOrStaffId(normalizedId)) {
+      setErrorMessage(getIdFormatHint(lang));
       return;
     }
     // 教職員の場合、学年とクラスを自動補完してバリデーションを通す
@@ -630,7 +631,7 @@ export default function GymCheckIn() {
   };
 
   const handleStudentIdChange = (value: string) => {
-    const normalizedId = value.trim().toUpperCase();
+    const normalizedId = normalizeIdInput(value);
     const detectedType = detectUserType(normalizedId);
 
     setStudentId(normalizedId);

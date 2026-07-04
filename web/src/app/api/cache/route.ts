@@ -1,13 +1,19 @@
 ﻿import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { isUseMock, mockCache } from '@/lib/mockDb';
+import { getIdFormatHint, isValidStudentOrStaffId, normalizeIdInput } from '@/lib/idFormat';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const studentId = (searchParams.get('student_id') ?? searchParams.get('user_code') ?? '').trim().toUpperCase();
+  const studentId = normalizeIdInput(searchParams.get('student_id') ?? searchParams.get('user_code') ?? '');
+  const lang = (searchParams.get('lang') as 'ja' | 'en' | null) ?? 'ja';
 
   if (!studentId) {
     return NextResponse.json({ error: 'student_id is required' }, { status: 400 });
+  }
+
+  if (!isValidStudentOrStaffId(studentId)) {
+    return NextResponse.json({ error: getIdFormatHint(lang) }, { status: 400 });
   }
 
   if (isUseMock()) {

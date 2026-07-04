@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 ocr_server.py
 =================================================
@@ -75,7 +75,13 @@ def init_camera():
 
     try:
         from libcamera import controls
-        picam2.set_controls({"AfMode": controls.AfModeEnum.Auto})
+        af_mode = getattr(controls.AfModeEnum, "Continuous", None) or controls.AfModeEnum.Auto
+        picam2.set_controls({"AfMode": af_mode})
+        logger.info("オートフォーカスを有効化しました: %s", getattr(af_mode, "name", str(af_mode)))
+        try:
+            picam2.autofocus_cycle()
+        except Exception as af_err:
+            logger.warning("初期オートフォーカス走査に失敗しました: %s", af_err)
     except Exception as e:
         logger.warning("オートフォーカス設定に失敗しました: %s", e)
 
