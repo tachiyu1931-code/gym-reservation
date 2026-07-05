@@ -66,7 +66,7 @@ if (!globalForMock.mockLogs) {
   globalForMock.mockLogs = [
     {
       id: 1,
-      student_id: '20261001',
+      student_id: '2026101',
       name: '山田 太郎',
       department: 'ITスペシャリスト科',
       grade: '4年',
@@ -83,7 +83,7 @@ if (!globalForMock.mockLogs) {
     },
     {
       id: 2,
-      student_id: '20261002',
+      student_id: '2026102',
       name: '佐藤 花子',
       department: '高度情報処理科/ITエンジニア科',
       grade: '2年',
@@ -102,7 +102,7 @@ if (!globalForMock.mockLogs) {
     },
     {
       id: 3,
-      student_id: '20261003',
+      student_id: '2026103',
       name: '鈴木翔平',
       department: '情報システム科',
       grade: '2年',
@@ -121,7 +121,7 @@ if (!globalForMock.mockLogs) {
     },
     {
       id: 4,
-      student_id: '20261004',
+      student_id: '2026104',
       name: '池田勇人',
       department: '高度情報処理科/ITエンジニア科',
       grade: '3年',
@@ -144,7 +144,7 @@ if (!globalForMock.mockLogs) {
 if (!globalForMock.mockCache) {
   globalForMock.mockCache = [
     {
-      student_id: '20261001',
+      student_id: '2026101',
       name: '山田 太郎',
       department: 'ITスペシャリスト科',
       grade: '4年',
@@ -160,7 +160,7 @@ if (!globalForMock.mockCache) {
       deleted_at: null,
     },
     {
-      student_id: '20261002',
+      student_id: '2026102',
       name: '佐藤 花子',
       department: '高度情報処理科/ITエンジニア科',
       grade: '2年',
@@ -176,7 +176,7 @@ if (!globalForMock.mockCache) {
       deleted_at: null,
     },
     {
-      student_id: '20261003',
+      student_id: '2026103',
       name: '鈴木翔平',
       department: '情報システム科',
       grade: '2年',
@@ -192,7 +192,7 @@ if (!globalForMock.mockCache) {
       deleted_at: null,
     },
     {
-      student_id: '20261004',
+      student_id: '2026104',
       name: '池田勇人',
       department: '情報システム科',
       grade: '2年',

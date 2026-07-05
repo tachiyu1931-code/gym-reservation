@@ -26,6 +26,7 @@ import {
   deleteDepartmentClass,
   updateDepartmentYears,
   ensureAnnualGradePromotion,
+  runAutoCheckout,
   type DepartmentMaster,
   type DeletedDepartmentMaster
 } from '@/app/admin/actions';
@@ -112,6 +113,7 @@ export default function AdminDashboard() {
     setErrorMsg('');
     try {
       await ensureAnnualGradePromotion();
+      await runAutoCheckout();
       const [logsData, cachesData, deptData, delLogsData, delCachesData, delDeptData] = await Promise.all([
         getUsageLogs() as Promise<UsageLog[]>,
         getUsersCache() as Promise<UserCache[]>,
@@ -477,6 +479,7 @@ export default function AdminDashboard() {
   const todayCount = todayLogs.length;
   const todayUniqueUsers = new Set(todayLogs.map(log => log.student_id)).size;
   const totalRegisteredCaches = caches.length;
+  const currentlyInGymCount = logs.filter((log) => !log.checked_out_at).length;
 
   return (
     <div className="admin-layout">
@@ -557,6 +560,7 @@ export default function AdminDashboard() {
           todayCount={todayCount}
           todayUniqueUsers={todayUniqueUsers}
           totalRegisteredCaches={totalRegisteredCaches}
+          currentlyInGymCount={currentlyInGymCount}
           logs={logs}
           todayLogs={todayLogs}
           todayStr={todayStr}

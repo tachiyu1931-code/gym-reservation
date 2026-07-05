@@ -68,7 +68,7 @@ MOTION_SETTLE_RATIO = 0.02
 COOLDOWN_SEC = 4
 
 # 要調整-5: カード未検出のままこの秒数が経過したらタイムアウト扱い
-CARD_DETECT_TIMEOUT_SEC = 8
+CARD_DETECT_TIMEOUT_SEC = 5
 
 # ===================== カード輪郭検出設定 =====================
 # ISO/IEC 7810 ID-1サイズ（85.60mm x 53.98mm）の縦横比
@@ -105,8 +105,8 @@ OCR_PSM = 7
 ID_PATTERN = r"(?<![A-Z0-9])(?:\d{7}|T\d{3})(?![A-Z0-9])"
 
 # 要調整-3: フォーマット不一致時の再試行回数・間隔
-MAX_OCR_RETRIES = 3
-OCR_RETRY_INTERVAL_SEC = 0.5
+MAX_OCR_RETRIES = 1
+OCR_RETRY_INTERVAL_SEC = 0.2
 
 # ===================== API送信設定 =====================
 # 要調整-4: 実際のNext.js側APIエンドポイントに合わせて変更する
