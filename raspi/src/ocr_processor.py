@@ -89,12 +89,25 @@ def run_ocr(preprocessed_img: np.ndarray) -> str:
     return text.strip()
 
 
+def normalize_ocr_text(raw_text: str) -> str:
+    """OCRの誤認識を、ID抽出前だけ数字寄りに補正する。"""
+    cleaned = raw_text.upper().replace(" ", "").replace("\n", "")
+    return cleaned.translate(str.maketrans({
+        "O": "0",
+        "Q": "0",
+        "I": "1",
+        "L": "1",
+        "Z": "2",
+        "S": "5",
+        "B": "8",
+    }))
+
 def extract_student_id(raw_text: str):
     """
-    OCR結果テキストから学籍番号（T + 数字7桁 or 数字7桁）を抽出する。
+    OCR結果テキストからID（学生: 数字7桁、教職員: T + 数字3桁）を抽出する。
     見つからない場合は None を返す。
     """
-    cleaned = raw_text.upper().replace(" ", "").replace("\n", "")
+    cleaned = normalize_ocr_text(raw_text)
     match = _ID_SEARCH_RE.search(cleaned)
     if not match:
         return None
@@ -102,7 +115,7 @@ def extract_student_id(raw_text: str):
 
 
 def is_valid_format(student_id: str) -> bool:
-    """T(任意) + 数字7桁のフォーマットに厳密一致するか確認する。"""
+    """学生IDまたは教職員IDのフォーマットに厳密一致するか確認する。"""
     if not student_id:
         return False
     return bool(_ID_RE.match(student_id))
