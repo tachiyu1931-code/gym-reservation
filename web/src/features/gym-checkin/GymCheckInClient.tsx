@@ -9,7 +9,7 @@ import { DEPARTMENTS } from '@/constants/departments';
 import { cleanStudentId, cleanName } from '@/utils/cleansing';
 import { detectUserType } from '@/utils/detectUserType';
 import { DEFAULT_LANGUAGE, TRANSLATIONS, type SupportedLanguage, type TranslationMessages } from '@/lib/translations';
-import { getIdFormatHint, isValidStudentOrStaffId, normalizeIdInput } from '@/lib/idFormat';
+import { getIdFormatHint, isValidStudentOrStaffId, normalizeEditableIdInput, normalizeIdInput } from '@/lib/idFormat';
 import { ScannerOverlay } from '@/components/ScannerOverlay';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { RankingsScreen } from './components/RankingsScreen';
@@ -631,7 +631,7 @@ export default function GymCheckIn() {
   };
 
   const handleStudentIdChange = (value: string) => {
-    const normalizedId = normalizeIdInput(value);
+    const normalizedId = normalizeEditableIdInput(value);
     const detectedType = detectUserType(normalizedId);
 
     setStudentId(normalizedId);

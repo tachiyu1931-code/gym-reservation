@@ -13,6 +13,18 @@ export function normalizeIdInput(value: string): string {
   return cleanAlphanumeric(value).trim().toUpperCase().replace(/\s+/g, '');
 }
 
+export function normalizeEditableIdInput(value: string): string {
+  const normalized = normalizeIdInput(value);
+  if (!normalized) return '';
+
+  if (normalized.startsWith('T')) {
+    const staffDigits = normalized.slice(1).replace(/\D/g, '').slice(0, STAFF_ID_DIGITS);
+    return `T${staffDigits}`;
+  }
+
+  return normalized.replace(/\D/g, '').slice(0, STUDENT_ID_DIGITS);
+}
+
 export function isValidStudentId(value: string): boolean {
   return STUDENT_ID_REGEX.test(normalizeIdInput(value));
 }
