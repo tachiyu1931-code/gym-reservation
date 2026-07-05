@@ -26,6 +26,11 @@ export function ManualEntryScreen(props: any) {
           <div className="input-with-action">
             <input
               type="text"
+              inputMode="text"
+              autoCapitalize="characters"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={7}
               className="input-text input-with-action-control"
               placeholder={t.placeholderId}
               value={studentId}
