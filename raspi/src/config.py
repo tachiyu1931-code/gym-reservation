@@ -119,7 +119,7 @@ NEXTJS_API_URL = f"{NEXTJS_SCHEME}://{NEXTJS_HOST}:{NEXTJS_PORT}/api/checkin/sca
 # （/adminのBasic Authはブラウザでの人間の認証向けのため、ラズパイ→APIの
 #  マシン間通信には環境変数化した固定シークレットの方がシンプル）
 API_SECRET_HEADER = "X-Scanner-Secret"
-API_SECRET_KEY = "CHANGE_ME"  # 要: 環境変数(os.environ)からの読み込みに変更すること
+API_SECRET_KEY = os.environ.get("GYM_RESERVATION_SCANNER_SECRET", "")
 
 API_TIMEOUT_SEC = 5
 API_MAX_RETRIES = 3
