@@ -3,7 +3,7 @@ import { Download, History, Search, Trash2 } from 'lucide-react';
 import { normalizeDepartment } from '@/constants/departments';
 
 export function UsageLogsTab(props: any) {
-  const { filteredLogs, departments, searchQuery, setSearchQuery, filterDept, setFilterDept, filterYear, setFilterYear, filterMonth, setFilterMonth, filterDate, setFilterDate, downloadCSV, handleDeleteLog, actionLoading } = props;
+  const { filteredLogs, departments, searchQuery, setSearchQuery, filterDept, setFilterDept, filterStatus, setFilterStatus, filterYear, setFilterYear, filterMonth, setFilterMonth, filterDate, setFilterDate, downloadCSV, handleDeleteLog, actionLoading } = props;
 
   return (
         <>
@@ -36,6 +36,21 @@ export function UsageLogsTab(props: any) {
                 {departments.map((dept: any) => (
                   <option key={dept.id} value={normalizeDepartment(dept.name)}>{dept.name}</option>
                 ))}
+              </select>
+            </div>
+
+             <div className="filter-group">
+              <label>ステータスで絞り込み</label>
+              <select
+                className="select-box"
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                style={{ fontSize: '0.95rem', paddingTop: '12px', paddingBottom: '12px' }}
+              >
+                <option value="">すべて</option>
+                <option value="active">在室中</option>
+                <option value="auto_checked_out">自動退室</option>
+                <option value="checked_out">退室済み</option>
               </select>
             </div>
 

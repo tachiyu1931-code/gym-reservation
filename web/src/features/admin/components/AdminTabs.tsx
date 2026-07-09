@@ -2,10 +2,11 @@
 import { BarChart3, History, Settings, Trash2, Users } from 'lucide-react';
 
 export function AdminTabs(props: any) {
-  const { activeTab, setActiveTab, setSearchQuery, setFilterDept, setFilterGrade, setFilterDate, deletedLogs, deletedCaches, deletedDepartments = [] } = props;
+  const { activeTab, setActiveTab, setSearchQuery, setFilterDept, setFilterStatus, setFilterGrade, setFilterDate, deletedLogs, deletedCaches, deletedDepartments = [] } = props;
   const resetFilters = () => {
     setSearchQuery('');
     setFilterDept('');
+    setFilterStatus('');
     setFilterGrade('');
     setFilterDate('');
   };
