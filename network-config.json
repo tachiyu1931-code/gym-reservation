@@ -1,7 +1,0 @@
-{
-    "scheme": "http",
-    "nextjsHost": "localhost",
-    "nextjsPort": 3000,
-    "raspiHost": "192.168.3.248",
-    "raspiPort": 5000
-}
