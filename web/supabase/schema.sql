@@ -420,8 +420,12 @@ BEGIN
     RETURN CASE TRIM(COALESCE(input_name, ''))
         WHEN '情報IT学科' THEN 'ITスペシャリスト科'
         WHEN '情報IT科' THEN 'ITスペシャリスト科'
-        WHEN '建築学科' THEN '建築設計科'
-        WHEN '国際学科' THEN '国際ITビジネス科'
+        WHEN '建築学科' THEN '建築設計科/インテリアデザイン科'
+        WHEN '建築設計科' THEN '建築設計科/インテリアデザイン科'
+        WHEN 'インテリアデザイン科' THEN '建築設計科/インテリアデザイン科'
+        WHEN '国際学科' THEN 'International IT Business Course(国際ITビジネス科)'
+        WHEN '国際ITビジネス科' THEN 'International IT Business Course(国際ITビジネス科)'
+        WHEN 'International IT Buisiness Course(国際ITビジネス科)' THEN 'International IT Business Course(国際ITビジネス科)'
         ELSE TRIM(COALESCE(input_name, ''))
     END;
 END;
