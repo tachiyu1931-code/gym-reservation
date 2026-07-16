@@ -123,8 +123,18 @@ def crop_bright_text_area(
     )
 
 
-ddef preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
-    """物理クロップ・コントラスト強調・拡大後に二値化する。"""
+def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
+    """物理クロップ・コントラスト強調・拡大後に二値化する。
+
+    ★修正ポイント★
+    以前のバージョンは config.OCR_USE_OTSU / config.OCR_BINARY_THRESHOLD を
+    無視し、常にOtsu二値化 → 失敗時はadaptiveThresholdへ自動フォールバック、
+    という「隠れた」ロジックが走っていた。これが
+      - Otsuの黒率判定でグレーノイズを誤って拾う
+      - adaptiveThresholdのブロック内で文字ストロークがブツブツに割れる
+    という2つの症状を引き起こしていたため、ここで撤廃し、config一本で
+    制御できるシンプルな分岐に統一した。
+    """
     gray = crop_bright_text_area(
         bgr_crop,
         brightness_threshold=60,
@@ -132,26 +142,49 @@ ddef preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
         padding=16,
     )
 
-    # コントラスト強調(CLAHE)を必ず通す。暗い/ムラのある入力でも
-    # 文字と背景の差を持ち上げてから二値化する。
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    # --- (1) CLAHEは弱め ---
+    # clipLimitを上げすぎるとグレーの影・ムラまで持ち上がり、
+    # 二値化時にノイズとして誤判定されやすくなる。
+    # 要調整: 1.5〜2.5の範囲で。上げると文字はくっきりするがノイズも増える。
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     gray = clahe.apply(gray)
+
+    # --- (2) 二値化前の軽いノイズ均し ---
+    # 文字の線は太いのでmedianBlur(3)ではほぼ影響を受けず、
+    # 細かいグレーの点々ノイズだけを滑らかにできる。
+    # 要調整: 文字が細すぎて欠けるなら 3→1(=無効化) にする。
+    gray = cv2.medianBlur(gray, 3)
 
     enlarged = cv2.resize(gray, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
 
-    # まず Otsu を試す
-    _, binary = cv2.threshold(enlarged, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-    black_ratio = 1.0 - (np.count_nonzero(binary) / binary.size)
-    logger.info("Otsu black_ratio=%.2f mean_gray=%.1f", black_ratio, float(np.mean(enlarged)))
-
-    # Otsuが崩壊している(ほぼ全黒 or ほぼ全白)場合は適応的二値化にフォールバック
-    if black_ratio > 0.85 or black_ratio < 0.02:
-        binary = cv2.adaptiveThreshold(
-            enlarged, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,
-            31, 15,
+    # --- (3) 二値化本体：config.OCR_USE_OTSU で明示的に切り替える ---
+    if config.OCR_USE_OTSU:
+        _, binary = cv2.threshold(
+            enlarged, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
         )
-        logger.info("Fell back to adaptiveThreshold due to bad Otsu result")
+        black_ratio = 1.0 - (np.count_nonzero(binary) / binary.size)
+        logger.info(
+            "Otsu threshold used. black_ratio=%.2f mean_gray=%.1f",
+            black_ratio, float(np.mean(enlarged)),
+        )
+    else:
+        # 固定しきい値。config.OCR_BINARY_THRESHOLD より暗い画素だけを
+        # 黒(文字)と判定する。Otsuやadaptiveのような「暴走」が起きないため、
+        # 撮影条件が安定しているなら最も予測可能で安全。
+        _, binary = cv2.threshold(
+            enlarged, config.OCR_BINARY_THRESHOLD, 255, cv2.THRESH_BINARY
+        )
+        black_ratio = 1.0 - (np.count_nonzero(binary) / binary.size)
+        logger.info(
+            "Fixed threshold=%d used. black_ratio=%.2f mean_gray=%.1f",
+            config.OCR_BINARY_THRESHOLD, black_ratio, float(np.mean(enlarged)),
+        )
+
+    # --- (4) 極小の黒点だけを除去（文字ストロークは削らない） ---
+    # カーネルは1〜2pxに抑えるのが鉄則。3x3以上にすると細い文字線が
+    # 削れて「ブツブツ」に崩れる（今回発生していた症状）ので触らないこと。
+    open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, open_kernel, iterations=1)
 
     return binary
 
