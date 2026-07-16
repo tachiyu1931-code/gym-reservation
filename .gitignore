@@ -1,9 +1,40 @@
-# OS/エディタ系
+# OS / editor
 .DS_Store
 Thumbs.db
 
-# Raspi (Python)
-raspi/__pycache__/
-raspi/*.pyc
+# Environment and local config
+.env
+.env.*
+!.env.example
+network-config.json
+!network-config.example.json
+
+# Secrets and credentials
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+
+# Dependencies and build outputs
+node_modules/
+web/node_modules/
+web/.next/
+web/out/
+web/build/
+web/.vercel/
+web/coverage/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
 raspi/venv/
 raspi/.venv/
+
+# Logs and caches
+*.log
+*.tsbuildinfo
+next-env.d.ts

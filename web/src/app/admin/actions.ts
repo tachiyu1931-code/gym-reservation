@@ -3,10 +3,9 @@
 import { supabase } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 import { isUseMock, mockLogs, mockCache, mockDepartments, mockNotifications } from '@/lib/mockDb';
-import { addUsageStats, calculateUsageMinutes } from '@/lib/usageStats';
 import { normalizeDepartment } from '@/constants/departments';
+import { runAutoCheckout as runAutoCheckoutInternal } from '@/lib/autoCheckout';
 
-const AUTO_CHECKOUT_HOURS = 15;
 const ANNUAL_GRADE_PROMOTION_MONTH = 4;
 
 
@@ -106,208 +105,29 @@ async function runAnnualGradePromotion(now: Date): Promise<AnnualGradePromotionR
     return { executed: true, schoolYear, promotedCount, deletedCount };
   }
 
-  const { data: existing, error: existingError } = await supabase
-    .from('annual_grade_promotions')
-    .select('school_year')
-    .eq('school_year', schoolYear)
-    .maybeSingle();
-
-  if (existingError) throw existingError;
-  if (existing) {
-    return { executed: false, schoolYear, promotedCount: 0, deletedCount: 0 };
-  }
-
-  const { data: departments, error: departmentsError } = await supabase
-    .from('departments_master')
-    .select('name, years_count, deleted_at')
-    .is('deleted_at', null);
-
-  if (departmentsError) throw departmentsError;
-
-  const departmentYearsMap = buildDepartmentYearsMap(departments ?? []);
-  const { data: caches, error: cachesError } = await supabase
-    .from('users_cache')
-    .select('student_id, department, grade, is_staff, user_type')
-    .is('deleted_at', null)
-    .eq('user_type', 'student');
-
-  if (cachesError) throw cachesError;
-
-  for (const cache of caches ?? []) {
-    if (cache.is_staff || cache.user_type === 'staff') continue;
-
-    const gradeNumber = parseGradeNumber(cache.grade);
-    const years = findYearsForDepartment(departmentYearsMap, cache.department);
-    if (!gradeNumber || !years) continue;
-
-    if (gradeNumber >= years) {
-      const { error } = await supabase
-        .from('users_cache')
-        .update({ deleted_at: deletedAt })
-        .eq('student_id', cache.student_id)
-        .is('deleted_at', null);
-      if (error) throw error;
-      deletedCount += 1;
-    } else {
-      const { error } = await supabase
-        .from('users_cache')
-        .update({ grade: `${gradeNumber + 1}年` })
-        .eq('student_id', cache.student_id)
-        .is('deleted_at', null);
-      if (error) throw error;
-      promotedCount += 1;
-    }
-  }
-
-  const { error: insertError } = await supabase.from('annual_grade_promotions').insert({
-    school_year: schoolYear,
-    promoted_count: promotedCount,
-    deleted_count: deletedCount,
+  const { data, error } = await supabase.rpc('promote_annual_grades', {
+    target_school_year: schoolYear,
   });
 
-  if (insertError) throw insertError;
+  if (error) throw error;
+
+  const result = Array.isArray(data) ? data[0] : data;
   revalidatePath('/admin');
-  return { executed: true, schoolYear, promotedCount, deletedCount };
+  return {
+    executed: Boolean(result?.executed),
+    schoolYear,
+    promotedCount: Number(result?.promoted_count ?? 0),
+    deletedCount: Number(result?.deleted_count ?? 0),
+  };
 }
 export async function ensureAnnualGradePromotion(): Promise<AnnualGradePromotionResult> {
   return runAnnualGradePromotion(new Date());
 }
 
-type AutoCheckoutNotificationSource = {
-  id: number;
-  student_id: string;
-  name: string;
-  department: string;
-  grade: string;
-  checked_in_at?: string;
-  checked_out_at?: string | null;
-};
-
-function buildAutoCheckoutNotificationMessage(log: AutoCheckoutNotificationSource) {
-  return `${log.student_id} ${log.name} さんが15時間経過により自動退室になりました。`;
+export async function runAutoCheckout() {
+  await runAutoCheckoutInternal();
+  revalidatePath('/admin');
 }
-
-function addMockNotificationForAutoCheckout(log: AutoCheckoutNotificationSource) {
-  const exists = mockNotifications.some(
-    (notification) => notification.type === 'auto_checkout' && notification.usage_log_id === log.id
-  );
-  if (exists) return;
-
-  const newId = mockNotifications.length > 0 ? Math.max(...mockNotifications.map((n) => n.id)) + 1 : 1;
-  mockNotifications.unshift({
-    id: newId,
-    type: 'auto_checkout',
-    usage_log_id: log.id,
-    student_number: log.student_id,
-    department: log.department,
-    grade: log.grade,
-    name: log.name,
-    message: buildAutoCheckoutNotificationMessage(log),
-    is_read: false,
-    is_acknowledged: false,
-    created_at: new Date().toISOString(),
-    read_at: null,
-  });
-}
-
-async function createNotificationForAutoCheckout(log: AutoCheckoutNotificationSource) {
-  const { data: existing, error: selectError } = await supabase
-    .from('notifications')
-    .select('id')
-    .eq('type', 'auto_checkout')
-    .eq('usage_log_id', log.id)
-    .maybeSingle();
-
-  if (selectError) throw selectError;
-  if (existing) return;
-
-  const { error } = await supabase.from('notifications').insert({
-    type: 'auto_checkout',
-    usage_log_id: log.id,
-    student_number: log.student_id,
-    department: log.department,
-    grade: log.grade,
-    name: log.name,
-    message: buildAutoCheckoutNotificationMessage(log),
-    is_read: false,
-    is_acknowledged: false,
-    read_at: null,
-  });
-
-  if (error) throw error;
-}
-
-async function ensureAutoCheckoutNotifications() {
-  if (isUseMock()) {
-    const now = Date.now();
-    for (const log of mockLogs) {
-      const isExpired = !log.checked_out_at && (now - new Date(log.checked_in_at).getTime()) > AUTO_CHECKOUT_HOURS * 3600000;
-      if (isExpired) {
-        const checkedOutAt = new Date(new Date(log.checked_in_at).getTime() + AUTO_CHECKOUT_HOURS * 3600000).toISOString();
-        const minutes = calculateUsageMinutes(log.checked_in_at, checkedOutAt);
-        log.checked_out_at = checkedOutAt;
-        log.auto_checked_out = true;
-        log.usage_duration_minutes = minutes;
-        log.admin_confirmed = false;
-        await addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
-      }
-
-      if (log.auto_checked_out && !log.deleted_at) {
-        addMockNotificationForAutoCheckout(log);
-      }
-    }
-    return;
-  }
-
-  const autoCheckoutTime = new Date(Date.now() - AUTO_CHECKOUT_HOURS * 3600000).toISOString();
-  const { data: oldLogs, error: selectOldError } = await supabase
-    .from('usage_logs')
-    .select('id, student_id, name, department, grade, checked_in_at')
-    .is('checked_out_at', null)
-    .is('deleted_at', null)
-    .lt('checked_in_at', autoCheckoutTime);
-
-  if (selectOldError) throw selectOldError;
-
-  for (const log of oldLogs ?? []) {
-    const checkedOutAt = new Date(new Date(log.checked_in_at).getTime() + AUTO_CHECKOUT_HOURS * 3600000).toISOString();
-    const minutes = calculateUsageMinutes(log.checked_in_at, checkedOutAt);
-    const { error: updateError } = await supabase
-      .from('usage_logs')
-      .update({
-        checked_out_at: checkedOutAt,
-        usage_duration_minutes: minutes,
-        auto_checked_out: true,
-        admin_confirmed: false,
-      })
-      .eq('id', log.id)
-      .is('checked_out_at', null);
-
-    if (!updateError) {
-      await createNotificationForAutoCheckout({ ...log, checked_out_at: checkedOutAt });
-      await addUsageStats(log.student_id, minutes, new Date(checkedOutAt));
-    }
-  }
-
-  const { data: autoCheckedOutLogs, error: selectAutoError } = await supabase
-    .from('usage_logs')
-    .select('id, student_id, name, department, grade, checked_in_at, checked_out_at')
-    .eq('auto_checked_out', true)
-    .is('deleted_at', null)
-    .order('checked_in_at', { ascending: false })
-    .limit(100);
-
-  if (selectAutoError) throw selectAutoError;
-
-  for (const log of autoCheckedOutLogs ?? []) {
-    await createNotificationForAutoCheckout(log);
-  }
-}
-
-// ==========================================
-// 型定義
-// ==========================================
-
 
 export type AdminNotification = {
   id: number;
@@ -887,7 +707,7 @@ export async function getDeletedStudentCaches() {
 
 /** 自動退室通知を取得 */
 export async function getNotifications(): Promise<AdminNotification[]> {
-  await ensureAutoCheckoutNotifications();
+  await runAutoCheckoutInternal();
 
   if (isUseMock()) {
     return [...mockNotifications].sort(

@@ -26,6 +26,7 @@ import {
   deleteDepartmentClass,
   updateDepartmentYears,
   ensureAnnualGradePromotion,
+  runAutoCheckout,
   type DepartmentMaster,
   type DeletedDepartmentMaster
 } from '@/app/admin/actions';
@@ -91,6 +92,7 @@ export default function AdminDashboard() {
   // フィルター・検索ステート
   const [searchQuery, setSearchQuery] = useState('');
   const [filterDept, setFilterDept] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
   const [filterGrade, setFilterGrade] = useState('');
   const [filterDate, setFilterDate] = useState('');
   const [filterYear, setFilterYear] = useState('');
@@ -112,6 +114,7 @@ export default function AdminDashboard() {
     setErrorMsg('');
     try {
       await ensureAnnualGradePromotion();
+      await runAutoCheckout();
       const [logsData, cachesData, deptData, delLogsData, delCachesData, delDeptData] = await Promise.all([
         getUsageLogs() as Promise<UsageLog[]>,
         getUsersCache() as Promise<UserCache[]>,
@@ -398,6 +401,14 @@ export default function AdminDashboard() {
       log.student_id.includes(searchQuery);
 
     const matchesDept = filterDept === '' || normalizeDepartment(log.department) === filterDept;
+    const isActive = !log.checked_out_at;
+    const isAutoCheckedOut = !!log.checked_out_at && log.auto_checked_out;
+    const isCheckedOut = !!log.checked_out_at && !log.auto_checked_out;
+    const matchesStatus =
+      filterStatus === '' ||
+      (filterStatus === 'active' && isActive) ||
+      (filterStatus === 'auto_checked_out' && isAutoCheckedOut) ||
+      (filterStatus === 'checked_out' && isCheckedOut);
 
     let year = '';
     let month = '';
@@ -415,7 +426,7 @@ export default function AdminDashboard() {
     const matchesYear = filterYear === '' || year === filterYear;
     const matchesMonth = filterMonth === '' || month === filterMonth.padStart(2, '0');
     const matchesDate = filterDate === '' || day === filterDate.padStart(2, '0');
-    return matchesSearch && matchesDept && matchesYear && matchesMonth && matchesDate;
+    return matchesSearch && matchesDept && matchesStatus && matchesYear && matchesMonth && matchesDate;
 
   });
 
@@ -477,6 +488,7 @@ export default function AdminDashboard() {
   const todayCount = todayLogs.length;
   const todayUniqueUsers = new Set(todayLogs.map(log => log.student_id)).size;
   const totalRegisteredCaches = caches.length;
+  const currentlyInGymCount = logs.filter((log) => !log.checked_out_at).length;
 
   return (
     <div className="admin-layout">
@@ -487,6 +499,7 @@ export default function AdminDashboard() {
         setActiveTab={setActiveTab}
         setSearchQuery={setSearchQuery}
         setFilterDept={setFilterDept}
+        setFilterStatus={setFilterStatus}
         setFilterGrade={setFilterGrade}
         setFilterDate={setFilterDate}
         deletedLogs={deletedLogs}
@@ -509,6 +522,8 @@ export default function AdminDashboard() {
           setSearchQuery={setSearchQuery}
           filterDept={filterDept}
           setFilterDept={setFilterDept}
+          filterStatus={filterStatus}
+          setFilterStatus={setFilterStatus}
           filterYear={filterYear}
           setFilterYear={setFilterYear}
           filterMonth={filterMonth}
@@ -557,6 +572,7 @@ export default function AdminDashboard() {
           todayCount={todayCount}
           todayUniqueUsers={todayUniqueUsers}
           totalRegisteredCaches={totalRegisteredCaches}
+          currentlyInGymCount={currentlyInGymCount}
           logs={logs}
           todayLogs={todayLogs}
           todayStr={todayStr}

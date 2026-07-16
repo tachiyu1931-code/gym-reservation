@@ -31,6 +31,23 @@ def order_points(pts: np.ndarray) -> np.ndarray:
     return rect
 
 
+MAX_DETECT_WIDTH = 1200
+
+
+def _resize_for_detection(bgr_image: np.ndarray, max_width: int = MAX_DETECT_WIDTH):
+    h, w = bgr_image.shape[:2]
+    scale = min(1.0, float(max_width) / w)
+    if scale >= 1.0:
+        return bgr_image, scale
+
+    resized = cv2.resize(
+        bgr_image,
+        (int(w * scale), int(h * scale)),
+        interpolation=cv2.INTER_AREA,
+    )
+    return resized, scale
+
+
 def find_card_contour(bgr_image: np.ndarray):
     """
     画像内からカードらしき四角形の輪郭（4点）を探す。
@@ -124,7 +141,12 @@ def detect_and_warp(bgr_image: np.ndarray):
     画像からカードを検出し、台形補正済み画像を返す。
     検出できなかった場合は None を返す。
     """
-    quad = find_card_contour(bgr_image)
+    resized, scale = _resize_for_detection(bgr_image)
+    quad = find_card_contour(resized)
     if quad is None:
         return None
+
+    if scale != 1.0:
+        quad = quad / scale
+
     return warp_card(bgr_image, quad)

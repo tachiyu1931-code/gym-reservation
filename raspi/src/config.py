@@ -65,10 +65,13 @@ MOTION_STABLE_FRAMES = 3
 MOTION_SETTLE_RATIO = 0.02
 
 # 要調整-2: 送信完了後、待機モードに戻るまでのクールダウン秒数
+# success/errorをブラウザの500msポーリングが確実に取得できる保持時間
+SCAN_RESULT_HOLD_SEC = 2.0
+
 COOLDOWN_SEC = 4
 
 # 要調整-5: カード未検出のままこの秒数が経過したらタイムアウト扱い
-CARD_DETECT_TIMEOUT_SEC = 8
+CARD_DETECT_TIMEOUT_SEC = 5
 
 # ===================== カード輪郭検出設定 =====================
 # ISO/IEC 7810 ID-1サイズ（85.60mm x 53.98mm）の縦横比
@@ -99,14 +102,14 @@ OCR_WHITELIST = "0123456789T"
 # tesseractのページセグメンテーションモード（7=単一行として扱う）
 OCR_PSM = 7
 
-# 学籍番号のフォーマット: 先頭に任意でT、続けて数字7桁ちょうど
-# (?<!\d) / (?!\d) は前後が数字でないことを保証する。
+# IDフォーマット: 学生は数字7桁、教職員はT + 数字3桁
+# (?<![A-Z0-9]) / (?![A-Z0-9]) は前後が英数字でないことを保証する。
 # これがないと "12345678"(8桁)から誤って"1234567"を切り出してしまう。
-ID_PATTERN = r"(?<!\d)T?\d{7}(?!\d)"
+ID_PATTERN = r"(?<![A-Z0-9])(?:\d{7}|T\d{3})(?![A-Z0-9])"
 
 # 要調整-3: フォーマット不一致時の再試行回数・間隔
-MAX_OCR_RETRIES = 3
-OCR_RETRY_INTERVAL_SEC = 0.5
+MAX_OCR_RETRIES = 1
+OCR_RETRY_INTERVAL_SEC = 0.2
 
 # ===================== API送信設定 =====================
 # 要調整-4: 実際のNext.js側APIエンドポイントに合わせて変更する
@@ -119,7 +122,7 @@ NEXTJS_API_URL = f"{NEXTJS_SCHEME}://{NEXTJS_HOST}:{NEXTJS_PORT}/api/checkin/sca
 # （/adminのBasic Authはブラウザでの人間の認証向けのため、ラズパイ→APIの
 #  マシン間通信には環境変数化した固定シークレットの方がシンプル）
 API_SECRET_HEADER = "X-Scanner-Secret"
-API_SECRET_KEY = "CHANGE_ME"  # 要: 環境変数(os.environ)からの読み込みに変更すること
+API_SECRET_KEY = os.environ.get("GYM_RESERVATION_SCANNER_SECRET", "")
 
 API_TIMEOUT_SEC = 5
 API_MAX_RETRIES = 3

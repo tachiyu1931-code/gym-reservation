@@ -26,12 +26,20 @@ export function ManualEntryScreen(props: any) {
           <div className="input-with-action">
             <input
               type="text"
+              inputMode="text"
+              autoCapitalize="characters"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={7}
               className="input-text input-with-action-control"
               placeholder={t.placeholderId}
               value={studentId}
-              onChange={(e) => handleStudentIdChange(e.target.value)}
+              onChange={(e) => {const isComposing = (e.nativeEvent as InputEvent).isComposing;
+                handleStudentIdChange(e.target.value,isComposing)}}
+              onCompositionEnd={(e)=>{handleStudentIdChange(e.currentTarget.value,false)}
+              }
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && canLookup) lookupUserStatus(studentId);
+                if (e.key === 'Enter' && canLookup && !e.nativeEvent.isComposing) lookupUserStatus(studentId);
               }}
             />
             <button

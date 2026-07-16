@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { isUseMock, mockLogs, mockCache } from '@/lib/mockDb';
+import { getIdFormatHint, isValidStudentOrStaffId, normalizeIdInput } from '@/lib/idFormat';
 
 type CheckInPayload = {
   student_id?: string;
@@ -12,6 +13,7 @@ type CheckInPayload = {
   is_staff?: boolean;
   role?: 'student' | 'staff';
   checked_in_at?: string;
+  lang?: 'ja' | 'en';
 };
 
 type EffectiveUser = {
@@ -27,7 +29,7 @@ type EffectiveUser = {
 export async function POST(request: Request) {
   try {
     const body = await request.json() as CheckInPayload;
-    const student_id = (body.user_code ?? body.student_id ?? '').trim().toUpperCase();
+    const student_id = normalizeIdInput(body.user_code ?? body.student_id ?? '');
     const role: 'student' | 'staff' = body.role ?? (body.is_staff ? 'staff' : 'student');
     const is_staff = role === 'staff';
     const name = (body.name ?? '').trim();
@@ -35,6 +37,12 @@ export async function POST(request: Request) {
     const grade = is_staff ? '教職員' : (body.grade ?? '').trim();
     const class_name = is_staff ? '教職員' : (body.class_name ?? '').trim();
     const checked_in_at = body.checked_in_at ?? new Date().toISOString();
+
+    const lang = (body.lang as 'ja' | 'en' | undefined) ?? 'ja';
+
+    if (!isValidStudentOrStaffId(student_id)) {
+      return NextResponse.json({ error: getIdFormatHint(lang) }, { status: 400 });
+    }
 
     if (!student_id || !name || !checked_in_at || (!is_staff && (!department || !grade || !class_name))) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });

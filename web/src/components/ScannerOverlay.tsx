@@ -17,6 +17,7 @@ interface ScannerOverlayProps {
   lang: SupportedLanguage;
   t: TranslationMessages;
   onScanSuccess: (studentId: string) => void;
+  onScanFailure: () => void;
   onClose: () => void;
 }
 
@@ -32,7 +33,7 @@ const cropPercent = {
 
 type ScanPhase = 'live' | 'capturing' | 'success' | 'error';
 
-export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverlayProps) {
+export function ScannerOverlay({ lang, t, onScanSuccess, onScanFailure, onClose }: ScannerOverlayProps) {
   const [phase, setPhase] = useState<ScanPhase>('live');
   const [errorMessage, setErrorMessage] = useState('');
   const [streamOk, setStreamOk] = useState(true);
@@ -42,6 +43,7 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
 
   // Poll /api/scan/status (proxy to raspi /status) to reflect state machine
   const didReportSuccessRef = useRef(false);
+  const didReportFailureRef = useRef(false);
   const pollStatus = useCallback(async () => {
     try {
       const res = await fetch('/api/scan/status', { cache: 'no-store' });
@@ -70,6 +72,10 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
       } else if (state === 'error') {
         setPhase('error');
         setErrorMessage(data.message || t.scanReadErr);
+        if (!didReportFailureRef.current) {
+          didReportFailureRef.current = true;
+          setTimeout(onScanFailure, 800);
+        }
       } else if (state === 'cooldown') {
         setPhase('live');
         setErrorMessage('');
@@ -81,7 +87,7 @@ export function ScannerOverlay({ lang, t, onScanSuccess, onClose }: ScannerOverl
       setPhase('error');
       setErrorMessage(t.raspiConnectionErr);
     }
-  }, [onScanSuccess, t.raspiConnectionErr, t.scanReadErr]);
+  }, [onScanFailure, onScanSuccess, t.raspiConnectionErr, t.scanReadErr]);
 
   useEffect(() => {
     // start polling immediately

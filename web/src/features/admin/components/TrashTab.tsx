@@ -10,7 +10,7 @@ export function TrashTab(props: any) {
             <div>
               <h2 style={{ fontSize: '1.3rem', fontWeight: 700 }}>ゴミ箱</h2>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-                論理削除されたデータを復元、または完全削除できます。完全削除は元に戻せません。
+                データを復元、または完全に削除できます。削除したデータは元に戻せません。
               </p>
             </div>
           </div>

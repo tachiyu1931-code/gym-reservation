@@ -1,11 +1,4 @@
-type RuntimeEnv = {
-  process?: {
-    env?: Record<string, string | undefined>;
-  };
-};
-
-const runtimeEnv = (globalThis as typeof globalThis & RuntimeEnv).process?.env;
-const RASPI_BASE_URL = runtimeEnv?.NEXT_PUBLIC_RASPI_BASE_URL || 'http://192.168.3.248:5000';
+const RASPI_BASE_URL = process.env.NEXT_PUBLIC_RASPI_BASE_URL || 'http://localhost:5000';
 
 export const dynamic = 'force-dynamic';
 

@@ -31,6 +31,7 @@ ocr_server.py
 """
 
 import io
+import os
 import base64
 import logging
 import threading
@@ -75,7 +76,13 @@ def init_camera():
 
     try:
         from libcamera import controls
-        picam2.set_controls({"AfMode": controls.AfModeEnum.Auto})
+        af_mode = getattr(controls.AfModeEnum, "Continuous", None) or controls.AfModeEnum.Auto
+        picam2.set_controls({"AfMode": af_mode})
+        logger.info("オートフォーカスを有効化しました: %s", getattr(af_mode, "name", str(af_mode)))
+        try:
+            picam2.autofocus_cycle()
+        except Exception as af_err:
+            logger.warning("初期オートフォーカス走査に失敗しました: %s", af_err)
     except Exception as e:
         logger.warning("オートフォーカス設定に失敗しました: %s", e)
 
@@ -177,7 +184,7 @@ def capture():
     if box_param:
         try:
             x, y, w, h = map(int, box_param.split(","))
-            draw_img = np.array(image)
+            draw_img = np.array(image).copy()
             cv2.rectangle(draw_img, (x, y), (x + w, y + h), (255, 0, 0), 6)
             image = Image.fromarray(draw_img)
         except Exception:
@@ -201,15 +208,17 @@ def capture_warp():
     if warped is None:
         return jsonify({"success": False, "error": "カードが検出できませんでした"}), 422
 
+    display_warped = warped.copy()
     if request.args.get("box") == "1":
-        h, w = warped.shape[:2]
+        h, w = display_warped.shape[:2]
         frac = config.NUMBER_REGION_FRAC
         x, y = int(w * frac["x"]), int(h * frac["y"])
         rw, rh = int(w * frac["w"]), int(h * frac["h"])
-        cv2.rectangle(warped, (x, y), (x + rw, y + rh), (0, 0, 255), 4)
+        # デバッグ枠は表示専用コピーに枠線だけ描く。OCR元画像は変更しない。
+        cv2.rectangle(display_warped, (x, y), (x + rw, y + rh), (0, 0, 255), 4)
 
     buf = io.BytesIO()
-    Image.fromarray(cv2.cvtColor(warped, cv2.COLOR_BGR2RGB)).save(buf, format="JPEG", quality=90)
+    Image.fromarray(cv2.cvtColor(display_warped, cv2.COLOR_BGR2RGB)).save(buf, format="JPEG", quality=90)
     buf.seek(0)
     return send_file(buf, mimetype="image/jpeg")
 
@@ -254,6 +263,21 @@ def status_reset():
 
 
 # ===================== 起動 =====================
+@app.route("/debug_preprocessed", methods=["GET"])
+def debug_preprocessed():
+    """
+    前処理後（二値化後）の画像を確認するためのデバッグ用エンドポイント。
+    ?label=full / right_focus / right_middle / center_wide で切り替え可能。
+    """
+    label = request.args.get("label", "full")
+    path = f"/tmp/debug_preprocessed_{label}.jpg"
+
+    if not os.path.exists(path):
+        return jsonify({"error": f"{path} が見つかりません。先に /scan を実行してください。"}), 404
+
+    return send_file(path, mimetype="image/jpeg")
+
+
 if __name__ == "__main__":
     init_camera()
     state_machine = ScannerStateMachine(
