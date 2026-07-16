@@ -76,174 +76,83 @@ def safe_crop_roi(
     bottom = max(top + 1, min(int(y + height) + padding, image_h))
     return image[top:bottom, left:right].copy()
 
-def autocrop_bright_region(
-    bgr_crop: np.ndarray,
-    brightness_threshold: int = 40,
-    padding: int = 10,
+def crop_bright_text_area(
+    bgr_image: np.ndarray,
+    brightness_threshold: int = 60,
+    bottom_cut_ratio: float = 0.18,
+    padding: int = 16,
 ) -> np.ndarray:
-    """黒い余白を除き、最も大きい明るい領域を切り出す。"""
-    if bgr_crop is None or bgr_crop.size == 0:
-        return bgr_crop
+    """最大の明るい紙領域を抽出し、点線部分を除いて白余白を加える。"""
+    if bgr_image is None or bgr_image.size == 0:
+        raise ValueError("Cannot preprocess an empty image.")
 
-    gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
-    _, mask = cv2.threshold(gray, brightness_threshold, 255, cv2.THRESH_BINARY)
+    gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
 
-    kernel = np.ones((15, 15), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    # この二値画像は明るい紙領域の検出だけに使用し、OCRには渡さない。
+    _, detection_mask = cv2.threshold(
+        gray, brightness_threshold, 255, cv2.THRESH_BINARY
+    )
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    detection_mask = cv2.morphologyEx(detection_mask, cv2.MORPH_CLOSE, kernel)
 
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return bgr_crop
+    contours, _ = cv2.findContours(
+        detection_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    if contours:
+        largest = max(contours, key=cv2.contourArea)
+        x, y, width, height = cv2.boundingRect(largest)
+        if cv2.contourArea(largest) >= gray.shape[0] * gray.shape[1] * 0.05:
+            cropped = safe_crop_roi(gray, x, y, width, height)
+        else:
+            cropped = gray.copy()
+    else:
+        cropped = gray.copy()
 
-    largest = max(contours, key=cv2.contourArea)
-    if cv2.contourArea(largest) < bgr_crop.shape[0] * bgr_crop.shape[1] * 0.05:
-        return bgr_crop
+    cut_ratio = max(0.0, min(float(bottom_cut_ratio), 0.40))
+    keep_height = max(1, int(round(cropped.shape[0] * (1.0 - cut_ratio))))
+    cropped = cropped[:keep_height, :].copy()
 
-    x, y, w, h = cv2.boundingRect(largest)
-    return safe_crop_roi(bgr_crop, x, y, w, h, padding=padding)
+    return cv2.copyMakeBorder(
+        cropped,
+        padding,
+        padding,
+        padding,
+        padding,
+        cv2.BORDER_CONSTANT,
+        value=255,
+    )
 
 
-<<<<<<< HEAD
-def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
-    """物理クロップ・白余白・拡大後に二値化する。"""
+ddef preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
+    """物理クロップ・コントラスト強調・拡大後に二値化する。"""
     gray = crop_bright_text_area(
         bgr_crop,
         brightness_threshold=60,
         bottom_cut_ratio=0.18,
         padding=16,
     )
-    enlarged = cv2.resize(
-        gray,
-        None,
-        fx=3.0,
-        fy=3.0,
-        interpolation=cv2.INTER_CUBIC,
-    )
 
-    if config.OCR_USE_OTSU:
-        _, binary = cv2.threshold(
-            enlarged, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+    # コントラスト強調(CLAHE)を必ず通す。暗い/ムラのある入力でも
+    # 文字と背景の差を持ち上げてから二値化する。
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+
+    enlarged = cv2.resize(gray, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+
+    # まず Otsu を試す
+    _, binary = cv2.threshold(enlarged, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    black_ratio = 1.0 - (np.count_nonzero(binary) / binary.size)
+    logger.info("Otsu black_ratio=%.2f mean_gray=%.1f", black_ratio, float(np.mean(enlarged)))
+
+    # Otsuが崩壊している(ほぼ全黒 or ほぼ全白)場合は適応的二値化にフォールバック
+    if black_ratio > 0.85 or black_ratio < 0.02:
+        binary = cv2.adaptiveThreshold(
+            enlarged, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,
+            31, 15,
         )
-    else:
-        # 固定しきい値: OCR_BINARY_THRESHOLD 未満の画素だけを黒(0)として残す。
-        # グレー(影・紙のムラ)は白(255)側に逃がす。
-        _, binary = cv2.threshold(
-            enlarged, config.OCR_BINARY_THRESHOLD, 255, cv2.THRESH_BINARY,
-        )
-=======
+        logger.info("Fell back to adaptiveThreshold due to bad Otsu result")
 
-def crop_to_digit_band(
-    gray: np.ndarray,
-    min_height_ratio: float = 0.45,
-    margin: int = 12,
-) -> np.ndarray:
-    """点線や小ノイズを除外し、文字と同程度の高さの成分を余白付きで囲む。"""
-    if gray is None or gray.size == 0:
-        return gray
-
-    binary = _binarize_for_analysis(gray)
-    foreground = cv2.bitwise_not(binary)
-    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(foreground, connectivity=8)
-    if num_labels <= 1:
-        return gray
-
-    image_h, image_w = gray.shape
-    image_area = image_h * image_w
-    candidates = []
-    for index in range(1, num_labels):
-        x, y, w, h, area = stats[index]
-        touches_border = x == 0 or y == 0 or x + w >= image_w or y + h >= image_h
-        if area < 8 or area > image_area * 0.80:
-            continue
-        if touches_border and (w > image_w * 0.50 or h > image_h * 0.50):
-            continue
-        candidates.append((x, y, w, h, area))
-
-    if not candidates:
-        return gray
-
-    max_height = max(item[3] for item in candidates)
-    min_height = max(3, int(max_height * min_height_ratio))
-    kept = [item for item in candidates if item[3] >= min_height]
-    if not kept:
-        return gray
-
-    left = min(item[0] for item in kept)
-    top = min(item[1] for item in kept)
-    right = max(item[0] + item[2] for item in kept)
-    bottom = max(item[1] + item[3] for item in kept)
-    return safe_crop_roi(gray, left, top, right - left, bottom - top, padding=margin)
-
-
-def pad_to_target_ratio(
-    gray: np.ndarray,
-    target_ratio: float = 3.0,
-    fixed_margin: int = 24,
-) -> np.ndarray:
-    """OCR用の縦横比と、文字周囲の白いクワイエットゾーンを確保する。"""
-    if gray is None or gray.size == 0:
-        return gray
-
-    h, w = gray.shape
-    ratio = w / h
-    top = bottom = left = right = 0
-    if ratio > target_ratio:
-        target_h = int(np.ceil(w / target_ratio))
-        total = max(0, target_h - h)
-        top, bottom = total // 2, total - total // 2
-    elif ratio < target_ratio * 0.5:
-        target_w = int(np.ceil(h * target_ratio * 0.5))
-        total = max(0, target_w - w)
-        left, right = total // 2, total - total // 2
-
-    padded = cv2.copyMakeBorder(
-        gray, top, bottom, left, right, cv2.BORDER_CONSTANT, value=255
-    )
-    return cv2.copyMakeBorder(
-        padded,
-        fixed_margin,
-        fixed_margin,
-        fixed_margin,
-        fixed_margin,
-        cv2.BORDER_CONSTANT,
-        value=255,
-    )
-
-
-def resize_to_target_height(gray: np.ndarray, target_height: int = 100) -> np.ndarray:
-    """縦横比を保ったままOCR向けの高さへ正規化する。"""
-    if gray is None or gray.size == 0:
-        return gray
-
-    h, w = gray.shape
-    scale = target_height / h
-    target_w = max(1, int(round(w * scale)))
-    interpolation = cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA
-    return cv2.resize(gray, (target_w, target_height), interpolation=interpolation)
-
-def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
-    """黒帯と点線を除去し、文字サイズと余白をOCR向けに正規化する。"""
-    cropped = autocrop_bright_region(bgr_crop)
-    gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-    gray = crop_to_digit_band(gray, min_height_ratio=0.45, margin=12)
-    gray = pad_to_target_ratio(gray, target_ratio=3.0, fixed_margin=24)
-    gray = resize_to_target_height(gray, target_height=100)
->>>>>>> 575f6d94d10c0843b82da3745a09918de15fe5aa
-
-    logger.info(
-        "binarize: mode=%s threshold=%s mean_gray=%.1f black_ratio=%.2f",
-        "otsu" if config.OCR_USE_OTSU else "fixed",
-        config.OCR_BINARY_THRESHOLD,
-        float(np.mean(enlarged)),
-        1.0 - (np.count_nonzero(binary) / binary.size),
-    )
-
-<<<<<<< HEAD
-=======
-    # 適応的二値化は文字を中抜けさせたため、Otsu法を維持する。
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
->>>>>>> 575f6d94d10c0843b82da3745a09918de15fe5aa
     return binary
 
 def run_ocr(preprocessed_img: np.ndarray) -> str:
