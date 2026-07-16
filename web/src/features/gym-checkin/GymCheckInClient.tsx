@@ -137,7 +137,7 @@ export default function GymCheckIn() {
   const [grade, setGrade] = useState('');
   const [className, setClassName] = useState('');
 
-  //  動的学科のクラスマスタ管理
+  //  動的学科、クラスマスタ管理
   const [dynamicDepartments, setDynamicDepartments] = useState<string[]>([]);
   const [deptToClassesMap, setDeptToClassesMap] = useState<Record<string, { grade: number; class_name: string }[]>>({});
   const [deptToYearsMap, setDeptToYearsMap] = useState<Record<string, number>>({});
@@ -337,7 +337,7 @@ export default function GymCheckIn() {
     const classGrades = deptToClassesMap[deptValue]?.map((c) => c.grade) ?? [];
     const uniqueGrades = Array.from(new Set(classGrades)).sort((a, b) => a - b);
     if (uniqueGrades.length > 0) {
-      return uniqueGrades.map((gradeNum) => `${gradeNum}年`);
+      return uniqueGrades.map((gradeNum) => `${gradeNum}蟷ｴ`);
     }
 
     const yearsCount = deptToYearsMap[deptValue] ?? 4;
@@ -520,7 +520,7 @@ export default function GymCheckIn() {
       setErrorMessage(getIdFormatHint(lang));
       return;
     }
-    // 教職員の場合、学年とクラスを自動補完してバリデーションを通す
+    // 教職員の場合、学科、学年、クラス名を自動補完。バリデーションを通す。
     let finalDepartment = department;
     let finalGrade = grade;
     let finalClassName = className;
@@ -630,7 +630,12 @@ export default function GymCheckIn() {
     }
   };
 
-  const handleStudentIdChange = (value: string) => {
+  const handleStudentIdChange = (value: string,isComposing = false) => {
+
+    if (isComposing) {
+      setStudentId(value);
+      return;
+    }
     const normalizedId = normalizeEditableIdInput(value);
     const detectedType = detectUserType(normalizedId);
 
@@ -679,7 +684,7 @@ export default function GymCheckIn() {
 
   return (
     <div className="app-container" onClick={resetTimeoutTimer}>
-      {/* 言語切り替えトグル: 小規模な共通部品のため親ファイルに残す */}
+      {/* 言語切り替えトグル*/}
       <div className="language-switcher">
         <Globe size={16} className="language-switcher-icon" />
         <button
@@ -696,7 +701,7 @@ export default function GymCheckIn() {
         </button>
       </div>
 
-      {/* ヘッダー: 小規模な共通部品のため親ファイルに残す */}
+      {/* ヘッダー */}
       <div className="header">
         <h1 className="title">{t.title}</h1>
         <p className="subtitle">{t.subtitle}</p>
@@ -807,7 +812,7 @@ export default function GymCheckIn() {
         />
       )}
 
-      {/* ステータスバッジ: 小規模な共通部品のため親ファイルに残す */}
+      {/* ステータスバッジ */}
       <div className={'status-badge ' + (isOnline ? 'status-online' : 'status-offline')}>
         <div className="status-dot"></div>
         <span>

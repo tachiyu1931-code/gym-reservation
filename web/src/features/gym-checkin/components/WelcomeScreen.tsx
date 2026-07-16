@@ -24,9 +24,12 @@ export function WelcomeScreen(props: any) {
               className="input-text input-with-action-control"
               placeholder={t.placeholderId}
               value={studentId}
-              onChange={(e) => handleStudentIdChange(e.target.value)}
+              onChange={(e) => {const isComposing = (e.nativeEvent as InputEvent).isComposing;
+                handleStudentIdChange(e.target.value,isComposing)}}
+              onCompositionEnd={(e)=>{handleStudentIdChange(e.currentTarget.value,false)}
+              }
               onKeyDown={(e) => {
-                if (e.key === 'Enter') lookupUserStatus(studentId);
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) lookupUserStatus(studentId);
               }}
             />
             <button

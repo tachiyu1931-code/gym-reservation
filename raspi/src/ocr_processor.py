@@ -64,19 +64,9 @@ def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
     # 文字が小さい場合に備えて2倍に拡大
     gray = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
 
-    # コントラスト強調（CLAHE）
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
-
-    # 適応的二値化
-    binary = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 15
-    )
-
-    # ノイズ除去
-    binary = cv2.medianBlur(binary, 3)
-
-    return binary
+    # 精度比較のため、強い二値化やノイズ除去は行わず、
+    # グレースケール化と拡大だけをTesseractへ渡す。
+    return gray
 
 
 def run_ocr(preprocessed_img: np.ndarray) -> str:
@@ -139,6 +129,7 @@ def read_student_id_from_crop(bgr_crop: np.ndarray):
 
     for label, candidate_crop in iter_ocr_candidate_crops(bgr_crop):
         processed = preprocess_for_ocr(candidate_crop)
+        cv2.imwrite(f"/tmp/debug_preprocessed_{label}.jpg", processed)
         raw_text = run_ocr(processed)
         raw_results.append(f"{label}={raw_text!r}")
 

@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 ocr_server.py
 =================================================
@@ -31,6 +31,7 @@ ocr_server.py
 """
 
 import io
+import os
 import base64
 import logging
 import threading
@@ -260,6 +261,21 @@ def status_reset():
 
 
 # ===================== 起動 =====================
+@app.route("/debug_preprocessed", methods=["GET"])
+def debug_preprocessed():
+    """
+    前処理後（二値化後）の画像を確認するためのデバッグ用エンドポイント。
+    ?label=full / right_focus / right_middle / center_wide で切り替え可能。
+    """
+    label = request.args.get("label", "full")
+    path = f"/tmp/debug_preprocessed_{label}.jpg"
+
+    if not os.path.exists(path):
+        return jsonify({"error": f"{path} が見つかりません。先に /scan を実行してください。"}), 404
+
+    return send_file(path, mimetype="image/jpeg")
+
+
 if __name__ == "__main__":
     init_camera()
     state_machine = ScannerStateMachine(
