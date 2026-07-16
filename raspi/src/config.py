@@ -65,6 +65,9 @@ MOTION_STABLE_FRAMES = 3
 MOTION_SETTLE_RATIO = 0.02
 
 # 要調整-2: 送信完了後、待機モードに戻るまでのクールダウン秒数
+# success/errorをブラウザの500msポーリングが確実に取得できる保持時間
+SCAN_RESULT_HOLD_SEC = 2.0
+
 COOLDOWN_SEC = 4
 
 # 要調整-5: カード未検出のままこの秒数が経過したらタイムアウト扱い

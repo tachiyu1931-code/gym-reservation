@@ -47,12 +47,34 @@ def crop_number_region(warped_bgr: np.ndarray) -> np.ndarray:
     """
     h, w = warped_bgr.shape[:2]
     frac = config.NUMBER_REGION_FRAC
-    x = int(w * frac["x"])
-    y = int(h * frac["y"])
-    rw = int(w * frac["w"])
-    rh = int(h * frac["h"])
-    return warped_bgr[y:y + rh, x:x + rw]
+    return safe_crop_roi(
+        warped_bgr,
+        int(w * frac["x"]),
+        int(h * frac["y"]),
+        int(w * frac["w"]),
+        int(h * frac["h"]),
+        padding=5,
+    )
 
+
+def safe_crop_roi(
+    image: np.ndarray,
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    padding: int = 0,
+) -> np.ndarray:
+    """ROIを画像内に収め、文字を欠けさせない余白付きコピーを返す。"""
+    if image is None or image.size == 0:
+        raise ValueError("Cannot crop an empty image.")
+
+    image_h, image_w = image.shape[:2]
+    left = max(0, min(int(x) - padding, image_w - 1))
+    top = max(0, min(int(y) - padding, image_h - 1))
+    right = max(left + 1, min(int(x + width) + padding, image_w))
+    bottom = max(top + 1, min(int(y + height) + padding, image_h))
+    return image[top:bottom, left:right].copy()
 
 def autocrop_bright_region(
     bgr_crop: np.ndarray,
@@ -79,57 +101,14 @@ def autocrop_bright_region(
         return bgr_crop
 
     x, y, w, h = cv2.boundingRect(largest)
-    image_h, image_w = bgr_crop.shape[:2]
-    x0 = max(0, x - padding)
-    y0 = max(0, y - padding)
-    x1 = min(image_w, x + w + padding)
-    y1 = min(image_h, y + h + padding)
-    return bgr_crop[y0:y1, x0:x1]
-
-
-def isolate_first_text_line(
-    gray_img: np.ndarray,
-    density_threshold: float = 0.03,
-    max_density_threshold: float = 0.80,
-    min_gap_rows: int = 5,
-    padding: int = 5,
-) -> np.ndarray:
-    """暗画素の行密度から、最初の文字行だけを抽出する。"""
-    if gray_img is None or gray_img.size == 0:
-        return gray_img
-
-    dark_mask = gray_img < 128
-    row_density = dark_mask.mean(axis=1)
-    text_start = None
-    gap_count = 0
-
-    for row, density in enumerate(row_density):
-        if density_threshold < density < max_density_threshold:
-            if text_start is None:
-                text_start = row
-            gap_count = 0
-        elif text_start is not None:
-            gap_count += 1
-            if gap_count >= min_gap_rows:
-                text_end = row - gap_count + 1
-                return gray_img[
-                    max(0, text_start - padding):min(gray_img.shape[0], text_end + padding),
-                    :,
-                ]
-
-    if text_start is None:
-        return gray_img
-    return gray_img[max(0, text_start - padding):, :]
+    return safe_crop_roi(bgr_crop, x, y, w, h, padding=padding)
 
 
 def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
-    """黒帯と別行を除去し、単一行OCR向けの二値画像を作る。"""
+    """黒帯を安全に除去し、単一行OCR向けの二値画像を作る。"""
     cropped = autocrop_bright_region(bgr_crop)
+    # 行密度による自動クロップは細い数字の上半分を欠かせるため行わない。
     gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-    gray = isolate_first_text_line(gray)
-
-    if gray.size == 0:
-        gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
 
     target_line_height = 60
     scale = target_line_height / gray.shape[0] if gray.shape[0] > 0 else 2.0
@@ -187,14 +166,15 @@ def is_valid_format(student_id: str) -> bool:
 
 
 def crop_fixed_number_roi(full_bgr: np.ndarray) -> np.ndarray:
-    """Crop the fixed OCR region from the full camera image."""
-    h, w = full_bgr.shape[:2]
+    """固定OCR領域を、境界チェック付きで安全に切り出す。"""
     box = config.NUMBER_ROI_BOX
-    x = max(0, min(int(box["x"]), w))
-    y = max(0, min(int(box["y"]), h))
-    rw = max(1, min(int(box["w"]), w - x))
-    rh = max(1, min(int(box["h"]), h - y))
-    return full_bgr[y:y + rh, x:x + rw]
+    return safe_crop_roi(
+        full_bgr,
+        box["x"],
+        box["y"],
+        box["w"],
+        box["h"],
+    )
 
 
 def read_student_id_from_crop(bgr_crop: np.ndarray):

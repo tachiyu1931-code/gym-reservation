@@ -735,6 +735,16 @@ export default function GymCheckIn() {
             setStudentId(scannedId);
             await lookupUserStatus(scannedId);
           }}
+          onScanFailure={() => {
+            setStudentId('');
+            setUserType(null);
+            setName('');
+            setDepartment('');
+            setGrade('');
+            setClassName('');
+            setErrorMessage(t.scanReadErr);
+            setScreen('form');
+          }}
           onClose={handleReset}
         />
       )}
