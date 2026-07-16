@@ -54,20 +54,94 @@ def crop_number_region(warped_bgr: np.ndarray) -> np.ndarray:
     return warped_bgr[y:y + rh, x:x + rw]
 
 
-def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
-    """
-    OCR精度向上のための前処理:
-    グレースケール化 → 拡大 → コントラスト強調 → 二値化 → ノイズ除去
-    """
+def autocrop_bright_region(
+    bgr_crop: np.ndarray,
+    brightness_threshold: int = 40,
+    padding: int = 10,
+) -> np.ndarray:
+    """黒い余白を除き、最も大きい明るい領域を切り出す。"""
+    if bgr_crop is None or bgr_crop.size == 0:
+        return bgr_crop
+
     gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
+    _, mask = cv2.threshold(gray, brightness_threshold, 255, cv2.THRESH_BINARY)
 
-    # 文字が小さい場合に備えて2倍に拡大
-    gray = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+    kernel = np.ones((15, 15), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
 
-    # 精度比較のため、強い二値化やノイズ除去は行わず、
-    # グレースケール化と拡大だけをTesseractへ渡す。
-    return gray
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return bgr_crop
 
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) < bgr_crop.shape[0] * bgr_crop.shape[1] * 0.05:
+        return bgr_crop
+
+    x, y, w, h = cv2.boundingRect(largest)
+    image_h, image_w = bgr_crop.shape[:2]
+    x0 = max(0, x - padding)
+    y0 = max(0, y - padding)
+    x1 = min(image_w, x + w + padding)
+    y1 = min(image_h, y + h + padding)
+    return bgr_crop[y0:y1, x0:x1]
+
+
+def isolate_first_text_line(
+    gray_img: np.ndarray,
+    density_threshold: float = 0.03,
+    max_density_threshold: float = 0.80,
+    min_gap_rows: int = 5,
+    padding: int = 5,
+) -> np.ndarray:
+    """暗画素の行密度から、最初の文字行だけを抽出する。"""
+    if gray_img is None or gray_img.size == 0:
+        return gray_img
+
+    dark_mask = gray_img < 128
+    row_density = dark_mask.mean(axis=1)
+    text_start = None
+    gap_count = 0
+
+    for row, density in enumerate(row_density):
+        if density_threshold < density < max_density_threshold:
+            if text_start is None:
+                text_start = row
+            gap_count = 0
+        elif text_start is not None:
+            gap_count += 1
+            if gap_count >= min_gap_rows:
+                text_end = row - gap_count + 1
+                return gray_img[
+                    max(0, text_start - padding):min(gray_img.shape[0], text_end + padding),
+                    :,
+                ]
+
+    if text_start is None:
+        return gray_img
+    return gray_img[max(0, text_start - padding):, :]
+
+
+def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
+    """黒帯と別行を除去し、単一行OCR向けの二値画像を作る。"""
+    cropped = autocrop_bright_region(bgr_crop)
+    gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+    gray = isolate_first_text_line(gray)
+
+    if gray.size == 0:
+        gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
+
+    target_line_height = 60
+    scale = target_line_height / gray.shape[0] if gray.shape[0] > 0 else 2.0
+    scale = max(1.5, min(scale, 6.0))
+    gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+
+    # 適応的二値化は文字を輪郭状にすることがあるため、Otsu法を使う。
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return cv2.medianBlur(binary, 3)
 
 def run_ocr(preprocessed_img: np.ndarray) -> str:
     """pytesseractでOCRを実行し、生のテキストを返す。"""
