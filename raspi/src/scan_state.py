@@ -172,7 +172,7 @@ class ScannerStateMachine:
                         student_id, raw_text = ocr_processor.read_student_id_from_card(warped)
                 if student_id is None:
                     logger.info(
-                        "OCRフォーマット不一致(試行%d/%d) raw=%r",
+                        "OCR結果に有効な学籍番号が見つかりませんでした(試行%d/%d) raw=%r",
                         attempt, config.MAX_OCR_RETRIES, raw_text,
                     )
                     time.sleep(config.OCR_RETRY_INTERVAL_SEC)

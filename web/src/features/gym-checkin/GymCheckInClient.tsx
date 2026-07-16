@@ -337,7 +337,7 @@ export default function GymCheckIn() {
     const classGrades = deptToClassesMap[deptValue]?.map((c) => c.grade) ?? [];
     const uniqueGrades = Array.from(new Set(classGrades)).sort((a, b) => a - b);
     if (uniqueGrades.length > 0) {
-      return uniqueGrades.map((gradeNum) => `${gradeNum}蟷ｴ`);
+      return uniqueGrades.map((gradeNum) => `${gradeNum}年`);
     }
 
     const yearsCount = deptToYearsMap[deptValue] ?? 4;

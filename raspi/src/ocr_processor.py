@@ -76,61 +76,133 @@ def safe_crop_roi(
     bottom = max(top + 1, min(int(y + height) + padding, image_h))
     return image[top:bottom, left:right].copy()
 
-def autocrop_bright_region(
-    bgr_crop: np.ndarray,
-    brightness_threshold: int = 40,
-    padding: int = 10,
+def crop_bright_text_area(
+    bgr_image: np.ndarray,
+    brightness_threshold: int = 60,
+    bottom_cut_ratio: float = 0.18,
+    padding: int = 16,
 ) -> np.ndarray:
-    """黒い余白を除き、最も大きい明るい領域を切り出す。"""
-    if bgr_crop is None or bgr_crop.size == 0:
-        return bgr_crop
+    """最大の明るい紙領域を抽出し、点線部分を除いて白余白を加える。"""
+    if bgr_image is None or bgr_image.size == 0:
+        raise ValueError("Cannot preprocess an empty image.")
 
-    gray = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2GRAY)
-    _, mask = cv2.threshold(gray, brightness_threshold, 255, cv2.THRESH_BINARY)
+    gray = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2GRAY)
 
-    kernel = np.ones((15, 15), np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    # この二値画像は明るい紙領域の検出だけに使用し、OCRには渡さない。
+    _, detection_mask = cv2.threshold(
+        gray, brightness_threshold, 255, cv2.THRESH_BINARY
+    )
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    detection_mask = cv2.morphologyEx(detection_mask, cv2.MORPH_CLOSE, kernel)
 
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return bgr_crop
+    contours, _ = cv2.findContours(
+        detection_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    if contours:
+        largest = max(contours, key=cv2.contourArea)
+        x, y, width, height = cv2.boundingRect(largest)
+        if cv2.contourArea(largest) >= gray.shape[0] * gray.shape[1] * 0.05:
+            cropped = safe_crop_roi(gray, x, y, width, height)
+        else:
+            cropped = gray.copy()
+    else:
+        cropped = gray.copy()
 
-    largest = max(contours, key=cv2.contourArea)
-    if cv2.contourArea(largest) < bgr_crop.shape[0] * bgr_crop.shape[1] * 0.05:
-        return bgr_crop
+    cut_ratio = max(0.0, min(float(bottom_cut_ratio), 0.40))
+    keep_height = max(1, int(round(cropped.shape[0] * (1.0 - cut_ratio))))
+    cropped = cropped[:keep_height, :].copy()
 
-    x, y, w, h = cv2.boundingRect(largest)
-    return safe_crop_roi(bgr_crop, x, y, w, h, padding=padding)
+    return cv2.copyMakeBorder(
+        cropped,
+        padding,
+        padding,
+        padding,
+        padding,
+        cv2.BORDER_CONSTANT,
+        value=255,
+    )
 
 
 def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
-    """黒帯を安全に除去し、単一行OCR向けの二値画像を作る。"""
-    cropped = autocrop_bright_region(bgr_crop)
-    # 行密度による自動クロップは細い数字の上半分を欠かせるため行わない。
-    gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+    """物理クロップ・コントラスト強調・拡大後に二値化する。
 
-    target_line_height = 60
-    scale = target_line_height / gray.shape[0] if gray.shape[0] > 0 else 2.0
-    scale = max(1.5, min(scale, 6.0))
-    gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    ★修正ポイント★
+    以前のバージョンは config.OCR_USE_OTSU / config.OCR_BINARY_THRESHOLD を
+    無視し、常にOtsu二値化 → 失敗時はadaptiveThresholdへ自動フォールバック、
+    という「隠れた」ロジックが走っていた。これが
+      - Otsuの黒率判定でグレーノイズを誤って拾う
+      - adaptiveThresholdのブロック内で文字ストロークがブツブツに割れる
+    という2つの症状を引き起こしていたため、ここで撤廃し、config一本で
+    制御できるシンプルな分岐に統一した。
+    """
+    gray = crop_bright_text_area(
+        bgr_crop,
+        brightness_threshold=60,
+        bottom_cut_ratio=0.18,
+        padding=16,
+    )
 
+    # --- (1) CLAHEは弱め ---
+    # clipLimitを上げすぎるとグレーの影・ムラまで持ち上がり、
+    # 二値化時にノイズとして誤判定されやすくなる。
+    # 要調整: 1.5〜2.5の範囲で。上げると文字はくっきりするがノイズも増える。
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     gray = clahe.apply(gray)
 
-    # 適応的二値化は文字を輪郭状にすることがあるため、Otsu法を使う。
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return cv2.medianBlur(binary, 3)
+    # --- (2) 二値化前の軽いノイズ均し ---
+    # 文字の線は太いのでmedianBlur(3)ではほぼ影響を受けず、
+    # 細かいグレーの点々ノイズだけを滑らかにできる。
+    # 要調整: 文字が細すぎて欠けるなら 3→1(=無効化) にする。
+    gray = cv2.medianBlur(gray, 3)
+
+    enlarged = cv2.resize(gray, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+
+    # --- (3) 二値化本体：config.OCR_USE_OTSU で明示的に切り替える ---
+    if config.OCR_USE_OTSU:
+        _, binary = cv2.threshold(
+            enlarged, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        black_ratio = 1.0 - (np.count_nonzero(binary) / binary.size)
+        logger.info(
+            "Otsu threshold used. black_ratio=%.2f mean_gray=%.1f",
+            black_ratio, float(np.mean(enlarged)),
+        )
+    else:
+        # 固定しきい値。config.OCR_BINARY_THRESHOLD より暗い画素だけを
+        # 黒(文字)と判定する。Otsuやadaptiveのような「暴走」が起きないため、
+        # 撮影条件が安定しているなら最も予測可能で安全。
+        _, binary = cv2.threshold(
+            enlarged, config.OCR_BINARY_THRESHOLD, 255, cv2.THRESH_BINARY
+        )
+        black_ratio = 1.0 - (np.count_nonzero(binary) / binary.size)
+        logger.info(
+            "Fixed threshold=%d used. black_ratio=%.2f mean_gray=%.1f",
+            config.OCR_BINARY_THRESHOLD, black_ratio, float(np.mean(enlarged)),
+        )
+
+    # --- (4) 極小の黒点だけを除去（文字ストロークは削らない） ---
+    # カーネルは1〜2pxに抑えるのが鉄則。3x3以上にすると細い文字線が
+    # 削れて「ブツブツ」に崩れる（今回発生していた症状）ので触らないこと。
+    open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, open_kernel, iterations=1)
+
+    return binary
 
 def run_ocr(preprocessed_img: np.ndarray) -> str:
-    """pytesseractでOCRを実行し、生のテキストを返す。"""
-    config_str = (
-        f"--psm {config.OCR_PSM} "
-        f"-c tessedit_char_whitelist={config.OCR_WHITELIST}"
-    )
-    text = pytesseract.image_to_string(preprocessed_img, config=config_str)
-    return text.strip()
+    """PSM 7/8を比較し、有効IDまたは最も情報量の多い結果を返す。"""
+    results = []
+    for psm in config.OCR_PSM_CANDIDATES:
+        config_str = (
+            f"--psm {psm} "
+            f"-c tessedit_char_whitelist={config.OCR_WHITELIST}"
+        )
+        text = pytesseract.image_to_string(preprocessed_img, config=config_str).strip()
+        if text:
+            results.append(text)
+            if extract_student_id(text):
+                return text
 
+    return max(results, key=len, default="")
 
 def normalize_ocr_text(raw_text: str) -> str:
     """OCRの誤認識を、ID抽出前だけ数字寄りに補正する。"""
