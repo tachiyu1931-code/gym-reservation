@@ -6,7 +6,7 @@ import type { NextConfig } from "next";
 function readNetworkConfig() {
   const defaultConfig = {
     scheme: "http",
-    raspiHost: "192.168.3.248",
+    raspiHost: "localhost",
     raspiPort: 5000,
   };
 
