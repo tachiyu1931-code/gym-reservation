@@ -104,33 +104,135 @@ def autocrop_bright_region(
     return safe_crop_roi(bgr_crop, x, y, w, h, padding=padding)
 
 
-def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
-    """黒帯を安全に除去し、単一行OCR向けの二値画像を作る。"""
-    cropped = autocrop_bright_region(bgr_crop)
-    # 行密度による自動クロップは細い数字の上半分を欠かせるため行わない。
-    gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+def _binarize_for_analysis(gray: np.ndarray) -> np.ndarray:
+    """連結成分解析用に、背景=白・文字候補=黒へ極性を揃える。"""
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    h, w = binary.shape
+    center = binary[h // 4:max(h // 4 + 1, h * 3 // 4), w // 4:max(w // 4 + 1, w * 3 // 4)]
+    if center.size > 0 and np.median(center) < 128:
+        binary = cv2.bitwise_not(binary)
+    return binary
 
-    target_line_height = 60
-    scale = target_line_height / gray.shape[0] if gray.shape[0] > 0 else 2.0
-    scale = max(1.5, min(scale, 6.0))
-    gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+def crop_to_digit_band(
+    gray: np.ndarray,
+    min_height_ratio: float = 0.45,
+    margin: int = 12,
+) -> np.ndarray:
+    """点線や小ノイズを除外し、文字と同程度の高さの成分を余白付きで囲む。"""
+    if gray is None or gray.size == 0:
+        return gray
+
+    binary = _binarize_for_analysis(gray)
+    foreground = cv2.bitwise_not(binary)
+    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(foreground, connectivity=8)
+    if num_labels <= 1:
+        return gray
+
+    image_h, image_w = gray.shape
+    image_area = image_h * image_w
+    candidates = []
+    for index in range(1, num_labels):
+        x, y, w, h, area = stats[index]
+        touches_border = x == 0 or y == 0 or x + w >= image_w or y + h >= image_h
+        if area < 8 or area > image_area * 0.80:
+            continue
+        if touches_border and (w > image_w * 0.50 or h > image_h * 0.50):
+            continue
+        candidates.append((x, y, w, h, area))
+
+    if not candidates:
+        return gray
+
+    max_height = max(item[3] for item in candidates)
+    min_height = max(3, int(max_height * min_height_ratio))
+    kept = [item for item in candidates if item[3] >= min_height]
+    if not kept:
+        return gray
+
+    left = min(item[0] for item in kept)
+    top = min(item[1] for item in kept)
+    right = max(item[0] + item[2] for item in kept)
+    bottom = max(item[1] + item[3] for item in kept)
+    return safe_crop_roi(gray, left, top, right - left, bottom - top, padding=margin)
+
+
+def pad_to_target_ratio(
+    gray: np.ndarray,
+    target_ratio: float = 3.0,
+    fixed_margin: int = 24,
+) -> np.ndarray:
+    """OCR用の縦横比と、文字周囲の白いクワイエットゾーンを確保する。"""
+    if gray is None or gray.size == 0:
+        return gray
+
+    h, w = gray.shape
+    ratio = w / h
+    top = bottom = left = right = 0
+    if ratio > target_ratio:
+        target_h = int(np.ceil(w / target_ratio))
+        total = max(0, target_h - h)
+        top, bottom = total // 2, total - total // 2
+    elif ratio < target_ratio * 0.5:
+        target_w = int(np.ceil(h * target_ratio * 0.5))
+        total = max(0, target_w - w)
+        left, right = total // 2, total - total // 2
+
+    padded = cv2.copyMakeBorder(
+        gray, top, bottom, left, right, cv2.BORDER_CONSTANT, value=255
+    )
+    return cv2.copyMakeBorder(
+        padded,
+        fixed_margin,
+        fixed_margin,
+        fixed_margin,
+        fixed_margin,
+        cv2.BORDER_CONSTANT,
+        value=255,
+    )
+
+
+def resize_to_target_height(gray: np.ndarray, target_height: int = 100) -> np.ndarray:
+    """縦横比を保ったままOCR向けの高さへ正規化する。"""
+    if gray is None or gray.size == 0:
+        return gray
+
+    h, w = gray.shape
+    scale = target_height / h
+    target_w = max(1, int(round(w * scale)))
+    interpolation = cv2.INTER_CUBIC if scale > 1 else cv2.INTER_AREA
+    return cv2.resize(gray, (target_w, target_height), interpolation=interpolation)
+
+def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
+    """黒帯と点線を除去し、文字サイズと余白をOCR向けに正規化する。"""
+    cropped = autocrop_bright_region(bgr_crop)
+    gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+    gray = crop_to_digit_band(gray, min_height_ratio=0.45, margin=12)
+    gray = pad_to_target_ratio(gray, target_ratio=3.0, fixed_margin=24)
+    gray = resize_to_target_height(gray, target_height=100)
 
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     gray = clahe.apply(gray)
 
-    # 適応的二値化は文字を輪郭状にすることがあるため、Otsu法を使う。
+    # 適応的二値化は文字を中抜けさせたため、Otsu法を維持する。
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return cv2.medianBlur(binary, 3)
+    return binary
 
 def run_ocr(preprocessed_img: np.ndarray) -> str:
-    """pytesseractでOCRを実行し、生のテキストを返す。"""
-    config_str = (
-        f"--psm {config.OCR_PSM} "
-        f"-c tessedit_char_whitelist={config.OCR_WHITELIST}"
-    )
-    text = pytesseract.image_to_string(preprocessed_img, config=config_str)
-    return text.strip()
+    """PSM 7/8を比較し、有効IDまたは最も情報量の多い結果を返す。"""
+    results = []
+    for psm in config.OCR_PSM_CANDIDATES:
+        config_str = (
+            f"--psm {psm} "
+            f"-c tessedit_char_whitelist={config.OCR_WHITELIST}"
+        )
+        text = pytesseract.image_to_string(preprocessed_img, config=config_str).strip()
+        if text:
+            results.append(text)
+            if extract_student_id(text):
+                return text
 
+    return max(results, key=len, default="")
 
 def normalize_ocr_text(raw_text: str) -> str:
     """OCRの誤認識を、ID抽出前だけ数字寄りに補正する。"""
