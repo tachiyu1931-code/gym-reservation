@@ -20,7 +20,6 @@ import cv2
 import config
 import card_detector
 import ocr_processor
-import api_client
 
 logger = logging.getLogger("scan_state")
 
@@ -85,6 +84,12 @@ class ScannerStateMachine:
                 "updatedAt": time.time(),
             }
         logger.info("state -> %s (studentId=%s, message=%s)", state, student_id, message)
+
+    def _publish_result(self, state, student_id=None, message=None):
+        """結果をブラウザが取得できる時間だけ保持してからクールダウンへ移る。"""
+        self._set_status(state, student_id=student_id, message=message)
+        time.sleep(config.SCAN_RESULT_HOLD_SEC)
+        self._set_status(STATE_COOLDOWN)
 
     def _crop_roi(self, gray_frame: np.ndarray) -> np.ndarray:
         roi = config.MOTION_ROI
@@ -153,8 +158,7 @@ class ScannerStateMachine:
 
         for attempt in range(1, config.MAX_OCR_RETRIES + 1):
             if time.time() - start_time > config.CARD_DETECT_TIMEOUT_SEC:
-                self._set_status(STATE_ERROR, message="カード検出タイムアウト")
-                self._set_status(STATE_COOLDOWN)
+                self._publish_result(STATE_ERROR, message="カード検出タイムアウト")
                 return
 
             try:
@@ -174,21 +178,15 @@ class ScannerStateMachine:
                     time.sleep(config.OCR_RETRY_INTERVAL_SEC)
                     continue
 
-                # OCR成功 → API送信
-                success, detail = api_client.send_scan_result(student_id)
-                if success:
-                    self._set_status(STATE_SUCCESS, student_id=student_id, message=detail)
-                else:
-                    self._set_status(STATE_ERROR, student_id=student_id, message=f"送信失敗: {detail}")
-                self._set_status(STATE_COOLDOWN)
+                # OCR成功時点で結果を確定する。ブラウザが/statusから番号を取得し、
+                # Next.js側のlookupUserStatusでチェックイン/アウトを判断する。
+                self._publish_result(STATE_SUCCESS, student_id=student_id, message="OCR成功")
                 return
 
             except Exception as e:
                 logger.exception("本処理中に例外が発生しました")
-                self._set_status(STATE_ERROR, message=str(e))
-                self._set_status(STATE_COOLDOWN)
+                self._publish_result(STATE_ERROR, message=str(e))
                 return
 
         # 規定回数リトライしても失敗
-        self._set_status(STATE_ERROR, message="OCR読み取り失敗(規定回数リトライ後)")
-        self._set_status(STATE_COOLDOWN)
+        self._publish_result(STATE_ERROR, message="OCR読み取り失敗(規定回数リトライ後)")

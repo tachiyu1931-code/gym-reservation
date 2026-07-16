@@ -184,7 +184,7 @@ def capture():
     if box_param:
         try:
             x, y, w, h = map(int, box_param.split(","))
-            draw_img = np.array(image)
+            draw_img = np.array(image).copy()
             cv2.rectangle(draw_img, (x, y), (x + w, y + h), (255, 0, 0), 6)
             image = Image.fromarray(draw_img)
         except Exception:
@@ -208,15 +208,17 @@ def capture_warp():
     if warped is None:
         return jsonify({"success": False, "error": "カードが検出できませんでした"}), 422
 
+    display_warped = warped.copy()
     if request.args.get("box") == "1":
-        h, w = warped.shape[:2]
+        h, w = display_warped.shape[:2]
         frac = config.NUMBER_REGION_FRAC
         x, y = int(w * frac["x"]), int(h * frac["y"])
         rw, rh = int(w * frac["w"]), int(h * frac["h"])
-        cv2.rectangle(warped, (x, y), (x + rw, y + rh), (0, 0, 255), 4)
+        # デバッグ枠は表示専用コピーに枠線だけ描く。OCR元画像は変更しない。
+        cv2.rectangle(display_warped, (x, y), (x + rw, y + rh), (0, 0, 255), 4)
 
     buf = io.BytesIO()
-    Image.fromarray(cv2.cvtColor(warped, cv2.COLOR_BGR2RGB)).save(buf, format="JPEG", quality=90)
+    Image.fromarray(cv2.cvtColor(display_warped, cv2.COLOR_BGR2RGB)).save(buf, format="JPEG", quality=90)
     buf.seek(0)
     return send_file(buf, mimetype="image/jpeg")
 
