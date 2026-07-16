@@ -105,22 +105,41 @@ def autocrop_bright_region(
 
 
 def preprocess_for_ocr(bgr_crop: np.ndarray) -> np.ndarray:
-    """黒帯を安全に除去し、単一行OCR向けの二値画像を作る。"""
-    cropped = autocrop_bright_region(bgr_crop)
-    # 行密度による自動クロップは細い数字の上半分を欠かせるため行わない。
-    gray = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+    """物理クロップ・白余白・拡大後に二値化する。"""
+    gray = crop_bright_text_area(
+        bgr_crop,
+        brightness_threshold=60,
+        bottom_cut_ratio=0.18,
+        padding=16,
+    )
+    enlarged = cv2.resize(
+        gray,
+        None,
+        fx=3.0,
+        fy=3.0,
+        interpolation=cv2.INTER_CUBIC,
+    )
 
-    target_line_height = 60
-    scale = target_line_height / gray.shape[0] if gray.shape[0] > 0 else 2.0
-    scale = max(1.5, min(scale, 6.0))
-    gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    if config.OCR_USE_OTSU:
+        _, binary = cv2.threshold(
+            enlarged, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU,
+        )
+    else:
+        # 固定しきい値: OCR_BINARY_THRESHOLD 未満の画素だけを黒(0)として残す。
+        # グレー(影・紙のムラ)は白(255)側に逃がす。
+        _, binary = cv2.threshold(
+            enlarged, config.OCR_BINARY_THRESHOLD, 255, cv2.THRESH_BINARY,
+        )
 
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
+    logger.info(
+        "binarize: mode=%s threshold=%s mean_gray=%.1f black_ratio=%.2f",
+        "otsu" if config.OCR_USE_OTSU else "fixed",
+        config.OCR_BINARY_THRESHOLD,
+        float(np.mean(enlarged)),
+        1.0 - (np.count_nonzero(binary) / binary.size),
+    )
 
-    # 適応的二値化は文字を輪郭状にすることがあるため、Otsu法を使う。
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return cv2.medianBlur(binary, 3)
+    return binary
 
 def run_ocr(preprocessed_img: np.ndarray) -> str:
     """pytesseractでOCRを実行し、生のテキストを返す。"""
